@@ -21,7 +21,7 @@ SOURCES = [
 ]
 
 # Number of articles to fetch per source
-MAX_ARTICLES_PER_SOURCE = 30
+MAX_ARTICLES_PER_SOURCE = 50
 
 # Embedding Matcher configuration
 EMBEDDING_SIMILARITY_THRESHOLD = 0.7  # Minimum similarity score for initial article filtering

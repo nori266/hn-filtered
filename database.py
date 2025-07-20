@@ -34,6 +34,11 @@ class ArticleDatabase:
             # Article with this URL already exists
             pass
 
+    def article_exists(self, url: str) -> bool:
+        """Check if an article with the given URL already exists."""
+        self.cursor.execute('SELECT 1 FROM articles WHERE url = ?', (url,))
+        return self.cursor.fetchone() is not None
+
     def get_all_articles(self):
         """Retrieve all saved articles."""
         self.cursor.execute('SELECT title, url, source, date, matches FROM articles ORDER BY date DESC')

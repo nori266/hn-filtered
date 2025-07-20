@@ -160,6 +160,11 @@ Example:
 
     def process_article(self, article: Dict) -> Dict:
         """Process an article to find matching questions and topics using two-stage filtering"""
+        # Check if the article has already been processed
+        if self.db.article_exists(article['url']):
+            logger.info(f"Skipping already processed article: {article['title']}")
+            return None  # Return None to indicate it was skipped
+
         questions = self._get_questions()
         
         try:
@@ -215,5 +220,5 @@ Example:
         """Process multiple articles and yield results one by one"""
         for article in articles:
             processed_article = self.process_article(article)
-            if processed_article["matches"]:  # Only yield articles with verified matches
+            if processed_article and processed_article["matches"]:  # Only yield articles with verified matches
                 yield processed_article
