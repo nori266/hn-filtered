@@ -11,7 +11,15 @@ NEWS_API_BASE_URL = "https://newsapi.org/v2"
 HN_API_BASE_URL = "https://hacker-news.firebaseio.com/v0"
 
 # LLM Configuration
-LLM_TYPE = "gemini"
+# Supported values: "groq", "gemini", "ollama"
+LLM_TYPE = "groq"  # Using Groq's Llama-3.3-70B-versatile model by default
+
+# Groq (OpenAI-compatible) configuration
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+GROQ_MODEL = "llama-3.3-70b-versatile"
+
+# Gemini configuration (kept for backward compatibility)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = "gemini-1.5-flash-latest"
 

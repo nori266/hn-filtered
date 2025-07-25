@@ -25,6 +25,10 @@ class ArticleMatcher:
         elif config.LLM_TYPE == "gemini":
             genai.configure(api_key=config.GEMINI_API_KEY)
             self.llm_model = genai.GenerativeModel(config.GEMINI_MODEL)
+        elif config.LLM_TYPE == "groq":
+            # Groq provides an OpenAI-compatible HTTP API
+            self.llm_url = f"{config.GROQ_BASE_URL}/chat/completions"
+            self.llm_model = config.GROQ_MODEL
         
         logger.info(f"Initialized ArticleMatcher with {config.LLM_TYPE} LLM and database persistence")
 
@@ -86,6 +90,31 @@ Example:
                         if hasattr(e, 'response') and hasattr(e.response, 'status_code') and e.response.status_code == 429 and attempt < retry_count - 1:
                             wait_time = 60  # Wait for 60 seconds
                             logger.warning(f"Rate limited (429). Waiting for {wait_time} seconds before retry (attempt {attempt + 1}/{retry_count})")
+                            time.sleep(wait_time)
+                            last_exception = e
+                            continue
+                        raise
+                elif config.LLM_TYPE == "groq":
+                    try:
+                        headers = {
+                            "Authorization": f"Bearer {config.GROQ_API_KEY}",
+                            "Content-Type": "application/json"
+                        }
+                        payload = {
+                            "model": self.llm_model,
+                            "messages": [
+                                {"role": "user", "content": prompt}
+                            ],
+                            "temperature": 0
+                        }
+                        response = requests.post(self.llm_url, json=payload, headers=headers, timeout=60)
+                        response.raise_for_status()
+                        response_json = response.json()
+                        response_text = response_json["choices"][0]["message"]["content"]
+                    except requests.exceptions.RequestException as e:
+                        if hasattr(e, 'response') and hasattr(e.response, 'status_code') and e.response.status_code == 429 and attempt < retry_count - 1:
+                            wait_time = 60
+                            logger.warning(f"Groq rate limited (429). Waiting {wait_time}s before retry (attempt {attempt + 1}/{retry_count})")
                             time.sleep(wait_time)
                             last_exception = e
                             continue
