@@ -3,6 +3,13 @@ from news_fetcher import NewsFetcher
 from llm_processor import ArticleMatcher
 from database import ArticleDatabase
 import datetime
+from pathlib import Path
+
+# Load default topics from topics.txt if it exists in the project root
+TOPICS_FILE = Path(__file__).with_name("topics.txt")
+default_topics_text = ""
+if TOPICS_FILE.exists():
+    default_topics_text = TOPICS_FILE.read_text(encoding="utf-8")
 
 st.title("Hacker News Filter")
 
@@ -14,7 +21,7 @@ if 'processed_articles' not in st.session_state:
 uploaded_file = st.file_uploader("Or upload a file with topics (one per line)", type=['txt'])
 
 # Text area for user to input topics
-user_input = st.text_area("Enter topics of interest (one per line)", height=150)
+user_input = st.text_area("Enter topics of interest (one per line)", height=150, value=default_topics_text)
 
 if st.button("Fetch and Filter News"):
     topics_text = ""
@@ -22,6 +29,8 @@ if st.button("Fetch and Filter News"):
         topics_text = uploaded_file.read().decode("utf-8")
     elif user_input.strip():
         topics_text = user_input
+    elif default_topics_text.strip():
+        topics_text = default_topics_text
 
     if not topics_text.strip():
         st.warning("Please enter at least one topic or upload a file.")
