@@ -2,7 +2,6 @@ import requests
 from typing import List, Dict
 import config
 from newspaper import Article
-import json
 from datetime import datetime
 
 class NewsFetcher:

@@ -60,7 +60,7 @@ if st.session_state.processed_articles:
         md_content += f"- [{article['title']}]({article['url']})\n"
         if article.get('matches'):
             for match in article['matches']:
-                md_content += f"  - Matched Topic: {match['question']}\n"
+                md_content += f"  - Matched Topic: {match['question']} ({match['relevance']})\n"
     
     today_str = datetime.date.today().strftime("%Y-%m-%d")
     

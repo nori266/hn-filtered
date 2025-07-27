@@ -17,7 +17,7 @@ LLM_TYPE = "groq"  # Using Groq's Llama-3.3-70B-versatile model by default
 # Groq (OpenAI-compatible) configuration
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
-GROQ_MODEL = "llama-3.3-70b-versatile"
+GROQ_MODEL = "moonshotai/kimi-k2-instruct"
 
 # Gemini configuration (kept for backward compatibility)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
