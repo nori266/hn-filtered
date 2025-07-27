@@ -54,12 +54,13 @@ class ArticleMatcher:
         # Create a numbered list of questions for the prompt
         questions_list = '\n'.join([f"{i+1}. {q}" for i, q in enumerate(questions)])
         
+        prompt_content = f"Article Content: {article['content'][:2000]}\n" if config.USE_CONTENT_FOR_LLM_FILTERING else ""
+
         prompt = f"""Analyze if this article is relevant to each of the following questions/topics. 
 For each question, respond with a single line containing the question number followed by 'yes' or 'no'.
 
 Article Title: {article['title']}
-Article Content: {article['content'][:2000]}  # Limit content length
-
+{prompt_content}
 Questions/Topics:
 {questions_list}
 

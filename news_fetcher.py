@@ -28,7 +28,7 @@ class NewsFetcher:
                 "url": article["url"],
                 "source": source,
                 "date": article.get("publishedAt", ""),
-                "content": self._get_article_content(article["url"])
+                "content": self._get_article_content(article["url"]) if config.USE_CONTENT_FOR_FILTERING else ""
             } for article in articles]
         except Exception as e:
             print(f"Error fetching from {source}: {str(e)}")
@@ -55,7 +55,7 @@ class NewsFetcher:
                         "url": story_data.get("url"),
                         "source": "hacker-news",
                         "date": date,
-                        "content": self._get_article_content(story_data.get("url"))
+                        "content": self._get_article_content(story_data.get("url")) if config.USE_CONTENT_FOR_FILTERING else ""
                     })
             return articles
         except Exception as e:
