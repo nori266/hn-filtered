@@ -1,0 +1,13 @@
+LLM use cases
+AI security
+AI ethics
+local LLM
+RAG (Retrieval Augmented Generation)
+AI agents
+emergent misalignment
+AI in IRT (Incident Response Team)
+AI in SIEM (Security Information and Event Management)
+vector search
+learning foreign languages
+different work cultures
+AI code assistants and proprietary code
