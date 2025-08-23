@@ -11,3 +11,4 @@ vector search
 learning foreign languages
 different work cultures
 AI code assistants and proprietary code
+AI tutorials
