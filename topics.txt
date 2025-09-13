@@ -1,14 +1,19 @@
 LLM use cases
-AI security
-AI ethics
 local LLM
 RAG (Retrieval Augmented Generation)
-AI agents
-emergent misalignment
-AI in IRT (Incident Response Team)
-AI in SIEM (Security Information and Event Management)
 vector search
-learning foreign languages
-different work cultures
+AI agents
+MCP (Model Context Protocol)
 AI code assistants and proprietary code
 AI tutorials
+hands-on
+AI security
+AI in IRT (Incident Response Team)
+AI in SIEM (Security Information and Event Management)
+emergent misalignment
+AI ethics
+learning foreign languages
+different work cultures
+MBA
+project management
+note taking
