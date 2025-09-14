@@ -1,7 +1,6 @@
 from typing import List, Dict, Generator
 import logging
 import time
-from embedding_matcher import EmbeddingMatcher
 import requests
 import config
 from database import ArticleDatabase
@@ -74,7 +73,11 @@ def summarize_article(url: str, retry_count: int = 3, audio_format: bool = False
 
 class ArticleMatcher:
     def __init__(self, input_text=""):
-        self.matcher = EmbeddingMatcher()
+        if config.USE_EMBEDDING_FILTER:
+            from embedding_matcher import EmbeddingMatcher
+            self.matcher = EmbeddingMatcher()
+        else:
+            self.matcher = None
         self.db = ArticleDatabase()
         self.input_text = input_text
         
@@ -245,25 +248,31 @@ Example:
         } for q in questions]
 
     def process_article(self, article: Dict) -> Dict:
-        """Process an article to find matching questions and topics using two-stage filtering"""
+        """Process an article to find matching questions and topics using optional two-stage filtering"""
         # Check if the article has already been processed
         if self.db.article_exists(article['url']):
             logger.info(f"Skipping already processed article: {article['title']}")
             return None  # Return None to indicate it was skipped
 
         questions = self._get_questions()
+        if not questions:
+            logger.warning("No questions/topics available for matching")
+            return None
         
         try:
             logger.info(f"Processing article: {article['title']}")
             
-            # First stage: Find similar questions/topics using embeddings
-            similar_matches = self.matcher.find_similar(article["content"], questions)
-            
-            # Second stage: Verify matches with LLM (batch verification)
-            if similar_matches:
+            if config.USE_EMBEDDING_FILTER:
+                # Two-stage filtering: First with embeddings, then with LLM
+                similar_matches = self.matcher.find_similar(article["content"], questions)
+                
+                if not similar_matches:
+                    logger.debug(f"No similar matches found for article: {article['title']}")
+                    return None
+                    
                 # Process all matches in a single batch
-                questions = [m["text"] for m in similar_matches]
-                verifications = self._verify_with_llm(article, questions)
+                matched_questions = [m["text"] for m in similar_matches]
+                verifications = self._verify_with_llm(article, matched_questions)
                 
                 verified_matches = []
                 for match, verification in zip(similar_matches, verifications):
@@ -275,7 +284,20 @@ Example:
                             "type": "match"
                         })
             else:
-                verified_matches = []
+                # Skip embedding filtering and verify all questions with LLM
+                logger.debug("Skipping embedding filter, verifying all questions with LLM")
+                verifications = self._verify_with_llm(article, questions)
+                
+                verified_matches = [
+                    {
+                        "question": verification["question"],
+                        "relevance": "Match (embedding filter disabled)",
+                        "llm_response": verification["llm_response"],
+                        "type": "match"
+                    }
+                    for verification in verifications 
+                    if verification["is_relevant"]
+                ]
             
             processed_article = {
                 "title": article["title"],

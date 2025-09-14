@@ -40,5 +40,6 @@ MAX_ARTICLES_PER_SOURCE = 100
 
 # Embedding Matcher configuration
 EMBEDDING_SIMILARITY_THRESHOLD = 0.7  # Minimum similarity score for initial article filtering
-USE_CONTENT_FOR_FILTERING = True # Whether to use article content for filtering
-USE_CONTENT_FOR_LLM_FILTERING = False # Whether to use article content for LLM filtering
+USE_EMBEDDING_FILTER = False  # Whether to use embedding similarity for initial filtering
+USE_CONTENT_FOR_FILTERING = True  # Whether to use article content for filtering
+USE_CONTENT_FOR_LLM_FILTERING = False  # Whether to use article content for LLM filtering
