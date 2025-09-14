@@ -49,6 +49,8 @@ if 'audio' not in st.session_state:
     st.session_state.audio = {}
 if 'audio_summaries' not in st.session_state:
     st.session_state.audio_summaries = {}
+if 'voice_info' not in st.session_state:
+    st.session_state.voice_info = {}
 
 # Display dummy articles and widgets
 st.success(f"Found {len(dummy_articles)} relevant articles:")
@@ -78,10 +80,11 @@ for a in dummy_articles:
                 audio_summary = summarize_article(a['url'], audio_format=True)
                 st.session_state.audio_summaries[a['url']] = audio_summary
                 
-                # Generate and store the audio
-                audio_bytes = generate_audio(audio_summary)
+                # Generate and store the audio and voice info
+                audio_bytes, voice = generate_audio(audio_summary)
                 if audio_bytes:
                     st.session_state.audio[a['url']] = audio_bytes
+                    st.session_state.voice_info[a['url']] = voice
                 else:
                     st.error("Could not generate audio.")
                 st.rerun()
@@ -94,5 +97,14 @@ for a in dummy_articles:
     # Display the audio player if audio is available
     if a['url'] in st.session_state.audio:
         st.audio(st.session_state.audio[a['url']], format=AUDIO_FORMAT)
+        
+        # Add a collapsible section for the podcast summary text
+        with st.expander("Show Podcast Text"):
+            if a['url'] in st.session_state.voice_info:
+                st.write(f"**Voice used:** {st.session_state.voice_info[a['url']]}")
+            if a['url'] in st.session_state.audio_summaries:
+                st.write(st.session_state.audio_summaries[a['url']])
+            else:
+                st.write("No podcast text available.")
 
     st.markdown("---")

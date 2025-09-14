@@ -30,8 +30,9 @@ def summarize_article(url: str, retry_count: int = 3, audio_format: bool = False
         return f"Error: Could not fetch article content from URL."
 
     if audio_format:
-        prompt = f"""Please create a conversational, podcast-style summary of the following article.
-        Make it sound natural and engaging. Keep it under 2 minutes when spoken.
+        prompt = f"""Create a serious, conversational, podcast-style summary of the following article. Make it sound natural and engaging, 
+        as if a single host is speaking directly to the audience. Keep the tone professional, without excessive humor. Do not include stage directions, 
+        sound effects, multiple speakers, or any markup—only the plain text that the host would say. Keep it under 2 minutes when spoken.
 
         Article text:
         {article.text}"""
