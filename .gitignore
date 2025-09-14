@@ -1,3 +1,6 @@
+# macOS specific files
+.DS_Store
+
 # Environment variables
 .env
 
@@ -13,3 +16,9 @@ __pycache__/
 .vscode/
 
 CLAUDE.md
+kokoro_model
+articles.db
+.codeiumignore
+
+*.wav
+*.mp3

@@ -7,10 +7,69 @@ import config
 from database import ArticleDatabase
 import google.generativeai as genai
 from google.api_core import exceptions as google_exceptions
+from newspaper import Article as NewspaperArticle
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+def summarize_article(url: str, retry_count: int = 3, audio_format: bool = False) -> str:
+    """Summarize an article from a URL.
+    
+    Args:
+        url: The URL of the article to summarize
+        retry_count: Number of retry attempts for the LLM call
+        audio_format: If True, generates a conversational podcast-style summary
+    """
+    try:
+        article = NewspaperArticle(url)
+        article.download()
+        article.parse()
+    except Exception as e:
+        logger.error(f"Error fetching article from {url}: {e}")
+        return f"Error: Could not fetch article content from URL."
+
+    if audio_format:
+        prompt = f"""Please create a conversational, podcast-style summary of the following article.
+        Make it sound natural and engaging. Keep it under 2 minutes when spoken.
+
+        Article text:
+        {article.text}"""
+    else:
+        prompt = f"""Please provide a concise summary of the following article text:
+
+{article.text}"""
+
+    # This part is a simplified version of the LLM call logic in _verify_with_llm.
+    # In a real-world scenario, this would be refactored into a shared function.
+    last_exception = None
+    for attempt in range(retry_count):
+        try:
+            if config.LLM_TYPE == "groq":
+                headers = {"Authorization": f"Bearer {config.GROQ_API_KEY}", "Content-Type": "application/json"}
+                payload = {
+                    "model": config.GROQ_MODEL,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0
+                }
+                response = requests.post(f"{config.GROQ_BASE_URL}/chat/completions", json=payload, headers=headers, timeout=120)
+                response.raise_for_status()
+                return response.json()["choices"][0]["message"]["content"]
+            elif config.LLM_TYPE == "gemini":
+                genai.configure(api_key=config.GEMINI_API_KEY)
+                model = genai.GenerativeModel(config.GEMINI_MODEL)
+                response = model.generate_content(prompt)
+                return response.text
+
+        except Exception as e:
+            last_exception = e
+            logger.warning(f"LLM summarization failed on attempt {attempt + 1}/{retry_count}: {e}")
+            time.sleep(5)
+            continue
+
+    error_msg = str(last_exception) if last_exception else "Unknown error"
+    return f"Error: Could not summarize the article after {retry_count} attempts. Last error: {error_msg}"
+
 
 class ArticleMatcher:
     def __init__(self, input_text=""):
@@ -18,11 +77,7 @@ class ArticleMatcher:
         self.db = ArticleDatabase()
         self.input_text = input_text
         
-        # Initialize LLM based on environment
-        if config.LLM_TYPE == "ollama":
-            self.llm_url = f"{config.OLLAMA_BASE_URL}/api/generate"
-            self.llm_model = config.OLLAMA_MODEL
-        elif config.LLM_TYPE == "gemini":
+        if config.LLM_TYPE == "gemini":
             genai.configure(api_key=config.GEMINI_API_KEY)
             self.llm_model = genai.GenerativeModel(config.GEMINI_MODEL)
         elif config.LLM_TYPE == "groq":
