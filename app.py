@@ -26,12 +26,28 @@ else:
     from tts_utils.elevenlabs_client import generate_audio
     AUDIO_FORMAT = 'audio/mp3'
 from pathlib import Path
+import re
 
 # Load default topics from topics.txt if it exists in the project root
 TOPICS_FILE = Path(__file__).with_name("topics.txt")
 default_topics_text = ""
 if TOPICS_FILE.exists():
     default_topics_text = TOPICS_FILE.read_text(encoding="utf-8")
+
+def sanitize_filename(title, max_length=50):
+    """
+    Sanitize article title to create a valid filename
+    """
+    # Remove or replace invalid characters for filenames
+    sanitized = re.sub(r'[<>:"/\\|?*]', '_', title)
+    # Replace multiple spaces/underscores with single underscore
+    sanitized = re.sub(r'[_\s]+', '_', sanitized)
+    # Remove leading/trailing underscores and spaces
+    sanitized = sanitized.strip('_ ')
+    # Limit length
+    if len(sanitized) > max_length:
+        sanitized = sanitized[:max_length].rstrip('_')
+    return sanitized if sanitized else "hn_article"
 
 st.title("Hacker News Filter")
 
@@ -138,6 +154,19 @@ if st.session_state.fetch_clicked:
             # Display the audio player if audio is available
             if a['url'] in st.session_state.audio:
                 st.audio(st.session_state.audio[a['url']], format=AUDIO_FORMAT)
+                
+                # Add download button for the audio
+                file_extension = 'wav' if config.TTS_PROVIDER == 'kokoro' else 'mp3'
+                filename = f"{sanitize_filename(a['title'])}.{file_extension}"
+                mime_type = AUDIO_FORMAT
+                
+                st.download_button(
+                    label="Download Audio",
+                    data=st.session_state.audio[a['url']],
+                    file_name=filename,
+                    mime=mime_type,
+                    key=f"download_audio_{idx}_{a['url'][:50]}"
+                )
                 
                 # Add a collapsible section for the podcast summary text
                 with st.expander("Show Podcast Text"):
