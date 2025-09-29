@@ -153,31 +153,48 @@ Need help? Just ask! 😊
             matcher = ArticleMatcher(input_text=topics)
             articles = fetcher.fetch_all_articles()
             
-            # Process articles
-            processed_articles = []
+            # Initialize storage for this user
+            self.user_articles[user_id] = []
             processed_urls = set()
+            article_count = 0
             
+            # Process and send articles one by one as they are verified
             for article in matcher.process_articles(articles):
                 if article['url'] not in processed_urls and article.get('matches'):
-                    processed_articles.append(article)
+                    # Add to user's article list
+                    self.user_articles[user_id].append(article)
                     processed_urls.add(article['url'])
+                    
+                    # Send the article immediately
+                    await self._send_article(update, article, article_count)
+                    article_count += 1
+                    
+                    # Update the processing message with current progress
+                    try:
+                        await processing_msg.edit_text(f"🔄 Processing articles... Found {article_count} relevant article{'s' if article_count != 1 else ''} so far...")
+                    except Exception:
+                        # Ignore edit errors (message might be too old to edit)
+                        pass
             
-            # Store articles for this user
-            self.user_articles[user_id] = processed_articles
-            
-            # Update processing message
-            if processed_articles:
-                await processing_msg.edit_text(f"✅ Found {len(processed_articles)} relevant articles!")
-                
-                # Send each article
-                for idx, article in enumerate(processed_articles):
-                    await self._send_article(update, article, idx)
+            # Final status update
+            if article_count > 0:
+                try:
+                    await processing_msg.edit_text(f"✅ Finished! Found {article_count} relevant article{'s' if article_count != 1 else ''} total.")
+                except Exception:
+                    # If we can't edit the message, send a new one
+                    await update.message.reply_text(f"✅ Finished! Found {article_count} relevant article{'s' if article_count != 1 else ''} total.")
             else:
-                await processing_msg.edit_text("🔍 No relevant articles found for your topics. Try adjusting your topic list with `/topics`.")
+                try:
+                    await processing_msg.edit_text("🔍 No relevant articles found for your topics. Try adjusting your topic list with `/topics`.")
+                except Exception:
+                    await update.message.reply_text("🔍 No relevant articles found for your topics. Try adjusting your topic list with `/topics`.")
                 
         except Exception as e:
             logger.error(f"Error fetching articles: {str(e)}")
-            await processing_msg.edit_text(f"❌ Error fetching articles: {str(e)}")
+            try:
+                await processing_msg.edit_text(f"❌ Error fetching articles: {str(e)}")
+            except Exception:
+                await update.message.reply_text(f"❌ Error fetching articles: {str(e)}")
 
     async def _send_article(self, update: Update, article: Dict, idx: int):
         """Send a single article with action buttons"""
@@ -452,9 +469,11 @@ Need help? Just ask! 😊
         
         # Create custom request object
         request = HTTPXRequest(
-            connection_pool_size=8,
-            proxy=proxy_url,
-            httpx_kwargs=httpx_kwargs
+            read_timeout=30,
+            write_timeout=30,
+            connect_timeout=10,
+            pool_timeout=10,
+            httpx_kwargs={"trust_env": False}  # if you need to ignore proxy env vars
         )
         
         # Create application with custom request and proper timeout configuration
@@ -462,12 +481,6 @@ Need help? Just ask! 😊
             Application.builder()
             .token(config.TELEGRAM_BOT_TOKEN)
             .request(request)
-            .get_updates_request(request)  # Use same request for get_updates
-            .read_timeout(30)  # Increase read timeout for better stability
-            .write_timeout(30)  # Increase write timeout for file uploads
-            .connect_timeout(30)  # Increase connection timeout
-            .pool_timeout(10)  # Increase pool timeout
-            .get_updates_read_timeout(42)  # Longer timeout for get_updates
             .build()
         )
         
