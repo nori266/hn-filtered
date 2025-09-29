@@ -25,8 +25,6 @@ if config.TTS_PROVIDER == 'kokoro':
 else:
     from tts_utils.elevenlabs_client import generate_audio
     AUDIO_FORMAT = 'audio/mp3'
-from database import ArticleDatabase
-import datetime
 from pathlib import Path
 
 # Load default topics from topics.txt if it exists in the project root
