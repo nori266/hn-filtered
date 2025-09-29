@@ -6,7 +6,7 @@ AI agents
 MCP (Model Context Protocol)
 AI code assistants and proprietary code
 AI tutorials
-hands-on
+AI hands-on
 AI security
 AI in IRT (Incident Response Team)
 AI in SIEM (Security Information and Event Management)

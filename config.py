@@ -21,7 +21,7 @@ GROQ_MODEL = "moonshotai/kimi-k2-instruct"
 
 # TTS Configuration
 # Supported values: "kokoro", "elevenlabs"
-TTS_PROVIDER = "kokoro"
+TTS_PROVIDER = "elevenlabs"
 
 # ElevenLabs configuration
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
@@ -40,6 +40,15 @@ MAX_ARTICLES_PER_SOURCE = 100
 
 # Embedding Matcher configuration
 EMBEDDING_SIMILARITY_THRESHOLD = 0.7  # Minimum similarity score for initial article filtering
-USE_EMBEDDING_FILTER = False  # Whether to use embedding similarity for initial filtering
+USE_EMBEDDING_FILTER = True  # Whether to use embedding similarity for initial filtering
 USE_CONTENT_FOR_FILTERING = True  # Whether to use article content for filtering
 USE_CONTENT_FOR_LLM_FILTERING = False  # Whether to use article content for LLM filtering
+
+# Telegram Bot configuration
+# Token for the bot, chat ID to post into, and threshold for notifications
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+TELEGRAM_NOTIFICATION_THRESHOLD = float(os.getenv("TELEGRAM_NOTIFICATION_THRESHOLD", "0.0"))
+
+# Autonomous fetch interval for the Telegram bot (in minutes)
+FETCH_INTERVAL_MINUTES = int(os.getenv("FETCH_INTERVAL_MINUTES", "60"))

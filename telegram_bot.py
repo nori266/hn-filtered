@@ -1,0 +1,502 @@
+import os
+import logging
+import asyncio
+from pathlib import Path
+from typing import Dict, List
+import io
+import httpx
+import ssl
+
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import (
+    Application, CommandHandler, MessageHandler, CallbackQueryHandler,
+    ContextTypes, filters
+)
+from telegram.error import NetworkError, TimedOut, TelegramError
+from telegram.request import HTTPXRequest
+
+from news_fetcher import NewsFetcher
+from llm_processor import ArticleMatcher, summarize_article
+import config
+
+# Dynamically import the TTS client based on the configuration
+if config.TTS_PROVIDER == 'kokoro':
+    from tts_utils.kokoro_client import generate_audio
+    AUDIO_FORMAT = 'audio/wav'
+    AUDIO_EXTENSION = 'wav'
+else:
+    from tts_utils.elevenlabs_client import generate_audio
+    AUDIO_FORMAT = 'audio/mp3'
+    AUDIO_EXTENSION = 'mp3'
+
+# Enable logging
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+logger = logging.getLogger(__name__)
+
+class TelegramHNBot:
+    def __init__(self):
+        self.application = None
+        self.user_topics = {}  # Store topics per user
+        self.user_articles = {}  # Store processed articles per user
+        self.user_summaries = {}  # Store summaries per user
+        self.user_audio = {}  # Store audio files per user
+        
+        # Load default topics
+        self.default_topics = self._load_default_topics()
+    
+    def _load_default_topics(self) -> str:
+        """Load default topics from topics.txt if it exists"""
+        topics_file = Path(__file__).with_name("topics.txt")
+        if topics_file.exists():
+            return topics_file.read_text(encoding="utf-8")
+        return ""
+    
+    def _sanitize_filename(self, title: str, max_length: int = 50) -> str:
+        """Sanitize article title to create a valid filename"""
+        import re
+        sanitized = re.sub(r'[<>:"/\\|?*]', '_', title)
+        sanitized = re.sub(r'[_\s]+', '_', sanitized)
+        sanitized = sanitized.strip('_ ')
+        if len(sanitized) > max_length:
+            sanitized = sanitized[:max_length].rstrip('_')
+        return sanitized if sanitized else "hn_article"
+
+    async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Send a message when the command /start is issued."""
+        welcome_text = """
+🤖 **Hacker News Filter Bot**
+
+I can help you filter Hacker News articles based on your interests!
+
+**Available Commands:**
+• `/start` - Show this welcome message
+• `/topics` - View or set your topics of interest
+• `/fetch` - Fetch and filter news articles
+• `/help` - Show help information
+
+**How to use:**
+1. Set your topics with `/topics` or send me a text file with topics
+2. Use `/fetch` to get filtered articles
+3. Click buttons to summarize articles or generate audio
+
+Ready to get started? Use `/topics` to set your interests!
+        """
+        await update.message.reply_text(welcome_text, parse_mode='Markdown')
+
+    async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Send help information"""
+        help_text = """
+📖 **Help - How to Use the Bot**
+
+**Step 1: Set Your Topics**
+• Use `/topics` to set topics of interest
+• Or send me a .txt file with topics (one per line)
+• Topics are used to filter relevant articles
+
+**Step 2: Fetch Articles**
+• Use `/fetch` to get filtered Hacker News articles
+• The bot will show articles matching your topics
+
+**Step 3: Interact with Articles**
+• Click "📄 Summarize" to get an AI summary
+• Click "🎵 Audio" to generate a podcast-style audio summary
+• Click "🔗 View" to open the original article
+
+**Current Configuration:**
+• LLM Provider: {llm_type}
+• TTS Provider: {tts_provider}
+• Max Articles: {max_articles}
+
+Need help? Just ask! 😊
+        """.format(
+            llm_type=config.LLM_TYPE,
+            tts_provider=config.TTS_PROVIDER,
+            max_articles=config.MAX_ARTICLES_PER_SOURCE
+        )
+        await update.message.reply_text(help_text, parse_mode='Markdown')
+
+    async def topics_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle topics command - show current topics or instructions to set new ones"""
+        user_id = update.effective_user.id
+        current_topics = self.user_topics.get(user_id, self.default_topics)
+        
+        if current_topics:
+            topics_list = current_topics.strip().split('\n')
+            topics_display = '\n'.join([f"• {topic.strip()}" for topic in topics_list if topic.strip()])
+            message = f"**Your Current Topics:**\n{topics_display}\n\n📝 Send me new topics (one per line) or upload a .txt file to update them."
+        else:
+            message = "**No topics set yet.**\n\n📝 Send me your topics of interest (one per line) or upload a .txt file."
+        
+        await update.message.reply_text(message, parse_mode='Markdown')
+
+    async def fetch_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Fetch and filter news articles"""
+        user_id = update.effective_user.id
+        topics = self.user_topics.get(user_id, self.default_topics)
+        
+        if not topics.strip():
+            await update.message.reply_text(
+                "❌ No topics set! Please use `/topics` to set your interests first.",
+                parse_mode='Markdown'
+            )
+            return
+        
+        # Send initial message
+        processing_msg = await update.message.reply_text("🔄 Fetching and filtering news... This may take a moment.")
+        
+        try:
+            # Fetch and process articles
+            fetcher = NewsFetcher()
+            matcher = ArticleMatcher(input_text=topics)
+            articles = fetcher.fetch_all_articles()
+            
+            # Process articles
+            processed_articles = []
+            processed_urls = set()
+            
+            for article in matcher.process_articles(articles):
+                if article['url'] not in processed_urls and article.get('matches'):
+                    processed_articles.append(article)
+                    processed_urls.add(article['url'])
+            
+            # Store articles for this user
+            self.user_articles[user_id] = processed_articles
+            
+            # Update processing message
+            if processed_articles:
+                await processing_msg.edit_text(f"✅ Found {len(processed_articles)} relevant articles!")
+                
+                # Send each article
+                for idx, article in enumerate(processed_articles):
+                    await self._send_article(update, article, idx)
+            else:
+                await processing_msg.edit_text("🔍 No relevant articles found for your topics. Try adjusting your topic list with `/topics`.")
+                
+        except Exception as e:
+            logger.error(f"Error fetching articles: {str(e)}")
+            await processing_msg.edit_text(f"❌ Error fetching articles: {str(e)}")
+
+    async def _send_article(self, update: Update, article: Dict, idx: int):
+        """Send a single article with action buttons"""
+        # Format matches
+        matches_text = ""
+        for match in article['matches']:
+            matches_text += f"• {match['question']} (Match: {match['llm_response']})\n"
+        
+        # Create article message
+        message_text = f"""
+**📰 [{article['title']}]({article['url']})**
+
+**Source:** {article['source']}
+**Matched Topics:**
+{matches_text}
+        """
+        
+        # Create inline keyboard
+        keyboard = [
+            [
+                InlineKeyboardButton("📄 Summarize", callback_data=f"summarize_{idx}"),
+                InlineKeyboardButton("🎵 Audio", callback_data=f"audio_{idx}"),
+            ],
+            [InlineKeyboardButton("🔗 View Article", url=article['url'])]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(
+            message_text, 
+            parse_mode='Markdown',
+            reply_markup=reply_markup,
+            disable_web_page_preview=True
+        )
+
+    async def handle_text_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle text messages (topic updates)"""
+        user_id = update.effective_user.id
+        text = update.message.text.strip()
+        
+        if text:
+            # Store topics for this user
+            self.user_topics[user_id] = text
+            topics_list = text.split('\n')
+            topics_display = '\n'.join([f"• {topic.strip()}" for topic in topics_list if topic.strip()])
+            
+            await update.message.reply_text(
+                f"✅ **Topics updated!**\n{topics_display}\n\nUse `/fetch` to get filtered articles.",
+                parse_mode='Markdown'
+            )
+
+    async def handle_document(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle document uploads (topic files)"""
+        user_id = update.effective_user.id
+        document = update.message.document
+        
+        if document.mime_type == 'text/plain' or document.file_name.endswith('.txt'):
+            try:
+                # Download and read the file
+                file = await context.bot.get_file(document.file_id)
+                file_content = await file.download_as_bytearray()
+                topics_text = file_content.decode('utf-8')
+                
+                # Store topics for this user
+                self.user_topics[user_id] = topics_text
+                topics_list = topics_text.strip().split('\n')
+                topics_display = '\n'.join([f"• {topic.strip()}" for topic in topics_list if topic.strip()])
+                
+                await update.message.reply_text(
+                    f"✅ **Topics loaded from file!**\n{topics_display}\n\nUse `/fetch` to get filtered articles.",
+                    parse_mode='Markdown'
+                )
+            except Exception as e:
+                await update.message.reply_text(f"❌ Error reading file: {str(e)}")
+        else:
+            await update.message.reply_text("❌ Please send a .txt file with your topics.")
+
+    async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle inline button callbacks"""
+        query = update.callback_query
+        await query.answer()
+        
+        user_id = update.effective_user.id
+        data = query.data
+        
+        if user_id not in self.user_articles:
+            await query.edit_message_text("❌ No articles found. Please use `/fetch` first.")
+            return
+        
+        try:
+            if data.startswith("summarize_"):
+                idx = int(data.split("_")[1])
+                await self._handle_summarize(query, user_id, idx)
+            elif data.startswith("audio_"):
+                idx = int(data.split("_")[1])
+                await self._handle_audio(query, user_id, idx)
+        except (IndexError, ValueError) as e:
+            logger.error(f"Error handling button callback: {str(e)}")
+            await query.edit_message_text("❌ Error processing request.")
+
+    async def _handle_summarize(self, query, user_id: int, idx: int):
+        """Handle summarize button click"""
+        articles = self.user_articles.get(user_id, [])
+        if idx >= len(articles):
+            await query.edit_message_text("❌ Article not found.")
+            return
+        
+        article = articles[idx]
+        article_url = article['url']
+        
+        # Check if summary already exists
+        if user_id not in self.user_summaries:
+            self.user_summaries[user_id] = {}
+        
+        if article_url in self.user_summaries[user_id]:
+            summary = self.user_summaries[user_id][article_url]
+        else:
+            # Show processing message
+            await query.edit_message_text("🔄 Generating summary...")
+            
+            try:
+                summary = summarize_article(article_url)
+                self.user_summaries[user_id][article_url] = summary
+            except Exception as e:
+                await query.edit_message_text(f"❌ Error generating summary: {str(e)}")
+                return
+        
+        # Send summary
+        summary_text = f"**📄 Summary of: {article['title']}**\n\n{summary}"
+        
+        # Truncate if too long for Telegram
+        if len(summary_text) > 4000:
+            summary_text = summary_text[:4000] + "..."
+        
+        await query.edit_message_text(summary_text, parse_mode='Markdown')
+
+    async def _handle_audio(self, query, user_id: int, idx: int):
+        """Handle audio button click"""
+        articles = self.user_articles.get(user_id, [])
+        if idx >= len(articles):
+            await query.edit_message_text("❌ Article not found.")
+            return
+        
+        article = articles[idx]
+        article_url = article['url']
+        
+        # Initialize user audio storage
+        if user_id not in self.user_audio:
+            self.user_audio[user_id] = {}
+        
+        # Check if audio already exists
+        if article_url in self.user_audio[user_id]:
+            audio_data = self.user_audio[user_id][article_url]
+        else:
+            # Show processing message
+            await query.edit_message_text("🔄 Generating podcast-style summary and audio...")
+            
+            try:
+                # Generate podcast-style summary
+                audio_summary = summarize_article(article_url, audio_format=True)
+                
+                # Generate audio
+                audio_bytes, voice = generate_audio(audio_summary)
+                
+                if not audio_bytes:
+                    await query.edit_message_text("❌ Could not generate audio.")
+                    return
+                
+                audio_data = {
+                    'audio_bytes': audio_bytes,
+                    'voice': voice,
+                    'summary': audio_summary
+                }
+                self.user_audio[user_id][article_url] = audio_data
+                
+            except Exception as e:
+                logger.error(f"Error generating audio: {str(e)}")
+                await query.edit_message_text(f"❌ Error generating audio: {str(e)}")
+                return
+        
+        # Send audio file
+        try:
+            filename = f"{self._sanitize_filename(article['title'])}.{AUDIO_EXTENSION}"
+            audio_file = io.BytesIO(audio_data['audio_bytes'])
+            audio_file.name = filename
+            
+            caption = f"🎵 **Podcast Summary:** {article['title']}"
+            if 'voice' in audio_data and audio_data['voice']:
+                caption += f"\n**Voice:** {audio_data['voice']}"
+            
+            await query.message.reply_audio(
+                audio=audio_file,
+                caption=caption,
+                parse_mode='Markdown'
+            )
+            
+            # Edit original message to show completion
+            await query.edit_message_text(f"✅ Audio generated for: {article['title']}")
+            
+        except Exception as e:
+            logger.error(f"Error sending audio: {str(e)}")
+            await query.edit_message_text(f"❌ Error sending audio: {str(e)}")
+
+    async def error_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle errors caused by updates"""
+        logger.error(f"Update {update} caused error: {context.error}")
+        
+        # Handle network errors specifically
+        if isinstance(context.error, NetworkError):
+            logger.error(f"Network error occurred: {context.error}")
+            # Try to notify user if possible
+            if update and update.effective_message:
+                try:
+                    await update.effective_message.reply_text(
+                        "❌ Network error occurred. Please try again in a moment.",
+                        parse_mode='Markdown'
+                    )
+                except Exception:
+                    pass  # Ignore if we can't send the message
+                    
+        elif isinstance(context.error, TimedOut):
+            logger.error(f"Request timed out: {context.error}")
+            if update and update.effective_message:
+                try:
+                    await update.effective_message.reply_text(
+                        "⏱️ Request timed out. Please try again.",
+                        parse_mode='Markdown'
+                    )
+                except Exception:
+                    pass
+        else:
+            # Log other errors
+            logger.error(f"Unhandled error: {context.error}")
+            if update and update.effective_message:
+                try:
+                    await update.effective_message.reply_text(
+                        "❌ An error occurred while processing your request. Please try again.",
+                        parse_mode='Markdown'
+                    )
+                except Exception:
+                    pass
+    
+    def run(self):
+        """Start the bot"""
+        if not config.TELEGRAM_BOT_TOKEN:
+            logger.error("TELEGRAM_BOT_TOKEN not found in config!")
+            return
+        
+        # Create HTTP client with custom SSL context for better compatibility
+        # This helps with certificate verification issues
+        httpx_kwargs = {
+            "timeout": httpx.Timeout(
+                connect=30.0,
+                read=30.0,
+                write=30.0,
+                pool=10.0
+            ),
+            "limits": httpx.Limits(
+                max_connections=100,
+                max_keepalive_connections=10,
+                keepalive_expiry=30.0
+            ),
+            # If SSL verification is causing issues, we can optionally disable it
+            # Note: This should only be done in development or if you understand the risks
+            "verify": False  # Disable SSL verification as a workaround
+        }
+        
+        # Check for proxy settings (optional)
+        proxy_url = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
+        if proxy_url:
+            httpx_kwargs["proxies"] = {"https://": proxy_url}
+            logger.info(f"Using proxy: {proxy_url}")
+        
+        # Create custom request object
+        request = HTTPXRequest(
+            connection_pool_size=8,
+            proxy=proxy_url,
+            httpx_kwargs=httpx_kwargs
+        )
+        
+        # Create application with custom request and proper timeout configuration
+        self.application = (
+            Application.builder()
+            .token(config.TELEGRAM_BOT_TOKEN)
+            .request(request)
+            .get_updates_request(request)  # Use same request for get_updates
+            .read_timeout(30)  # Increase read timeout for better stability
+            .write_timeout(30)  # Increase write timeout for file uploads
+            .connect_timeout(30)  # Increase connection timeout
+            .pool_timeout(10)  # Increase pool timeout
+            .get_updates_read_timeout(42)  # Longer timeout for get_updates
+            .build()
+        )
+        
+        # Add handlers
+        self.application.add_handler(CommandHandler("start", self.start_command))
+        self.application.add_handler(CommandHandler("help", self.help_command))
+        self.application.add_handler(CommandHandler("topics", self.topics_command))
+        self.application.add_handler(CommandHandler("fetch", self.fetch_command))
+        
+        # Message handlers
+        self.application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_text_message))
+        self.application.add_handler(MessageHandler(filters.Document.ALL, self.handle_document))
+        
+        # Button callback handler
+        self.application.add_handler(CallbackQueryHandler(self.button_callback))
+        
+        # Add error handler
+        self.application.add_error_handler(self.error_handler)
+        
+        # Start the bot with retry configuration
+        logger.info("Starting Telegram bot...")
+        self.application.run_polling(
+            allowed_updates=Update.ALL_TYPES,
+            drop_pending_updates=True,  # Drop pending updates on restart
+            poll_interval=2.0,  # Poll interval in seconds
+            timeout=10  # Timeout for long polling
+        )
+
+
+if __name__ == '__main__':
+    bot = TelegramHNBot()
+    bot.run()
