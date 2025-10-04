@@ -1,0 +1,2 @@
+tts_utils/kokoro_model/*.onnx filter=lfs diff=lfs merge=lfs -text
+tts_utils/kokoro_model/*.bin filter=lfs diff=lfs merge=lfs -text

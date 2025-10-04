@@ -16,7 +16,6 @@ __pycache__/
 .vscode/
 
 CLAUDE.md
-kokoro_model
 articles.db
 .codeiumignore
 
