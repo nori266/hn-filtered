@@ -492,8 +492,7 @@ Need help? Just ask! 😊
             read_timeout=30,
             write_timeout=30,
             connect_timeout=10,
-            pool_timeout=10,
-            httpx_kwargs={"trust_env": False}  # if you need to ignore proxy env vars
+            pool_timeout=10
         )
         
         # Create application with custom request and proper timeout configuration
