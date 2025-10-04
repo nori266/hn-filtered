@@ -1,11 +1,9 @@
 import os
 import logging
-import asyncio
 from pathlib import Path
 from typing import Dict, List
 import io
 import httpx
-import ssl
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -298,7 +296,7 @@ Need help? Just ask! 😊
         """Handle summarize button click"""
         articles = self.user_articles.get(user_id, [])
         if idx >= len(articles):
-            await query.edit_message_text("❌ Article not found.")
+            await query.message.reply_text("❌ Article not found.")
             return
         
         article = articles[idx]
@@ -310,31 +308,40 @@ Need help? Just ask! 😊
         
         if article_url in self.user_summaries[user_id]:
             summary = self.user_summaries[user_id][article_url]
+            # Send summary as new message to preserve original article
+            summary_text = f"**📄 Summary of: {article['title']}**\n\n{summary}"
+            
+            # Truncate if too long for Telegram
+            if len(summary_text) > 4000:
+                summary_text = summary_text[:4000] + "..."
+            
+            await query.message.reply_text(summary_text, parse_mode='Markdown')
         else:
-            # Show processing message
-            await query.edit_message_text("🔄 Generating summary...")
+            # Show processing message as new message
+            processing_msg = await query.message.reply_text("🔄 Generating summary...")
             
             try:
                 summary = summarize_article(article_url)
                 self.user_summaries[user_id][article_url] = summary
+                
+                # Send summary
+                summary_text = f"**📄 Summary of: {article['title']}**\n\n{summary}"
+                
+                # Truncate if too long for Telegram
+                if len(summary_text) > 4000:
+                    summary_text = summary_text[:4000] + "..."
+                
+                await processing_msg.edit_text(summary_text, parse_mode='Markdown')
+                
             except Exception as e:
-                await query.edit_message_text(f"❌ Error generating summary: {str(e)}")
+                await processing_msg.edit_text(f"❌ Error generating summary: {str(e)}")
                 return
-        
-        # Send summary
-        summary_text = f"**📄 Summary of: {article['title']}**\n\n{summary}"
-        
-        # Truncate if too long for Telegram
-        if len(summary_text) > 4000:
-            summary_text = summary_text[:4000] + "..."
-        
-        await query.edit_message_text(summary_text, parse_mode='Markdown')
 
     async def _handle_audio(self, query, user_id: int, idx: int):
         """Handle audio button click"""
         articles = self.user_articles.get(user_id, [])
         if idx >= len(articles):
-            await query.edit_message_text("❌ Article not found.")
+            await query.message.reply_text("❌ Article not found.")
             return
         
         article = articles[idx]
@@ -347,9 +354,28 @@ Need help? Just ask! 😊
         # Check if audio already exists
         if article_url in self.user_audio[user_id]:
             audio_data = self.user_audio[user_id][article_url]
+            # Send audio file directly if it already exists
+            try:
+                filename = f"{self._sanitize_filename(article['title'])}.{AUDIO_EXTENSION}"
+                audio_file = io.BytesIO(audio_data['audio_bytes'])
+                audio_file.name = filename
+                
+                caption = f"🎵 **Podcast Summary:** {article['title']}"
+                if 'voice' in audio_data and audio_data['voice']:
+                    caption += f"\n**Voice:** {audio_data['voice']}"
+                
+                await query.message.reply_audio(
+                    audio=audio_file,
+                    caption=caption,
+                    parse_mode='Markdown'
+                )
+                
+            except Exception as e:
+                logger.error(f"Error sending audio: {str(e)}")
+                await query.message.reply_text(f"❌ Error sending audio: {str(e)}")
         else:
-            # Show processing message
-            await query.edit_message_text("🔄 Generating podcast-style summary and audio...")
+            # Show processing message as new message to preserve original article
+            processing_msg = await query.message.reply_text("🔄 Generating podcast-style summary and audio...")
             
             try:
                 # Generate podcast-style summary
@@ -359,7 +385,7 @@ Need help? Just ask! 😊
                 audio_bytes, voice = generate_audio(audio_summary)
                 
                 if not audio_bytes:
-                    await query.edit_message_text("❌ Could not generate audio.")
+                    await processing_msg.edit_text("❌ Could not generate audio.")
                     return
                 
                 audio_data = {
@@ -369,33 +395,27 @@ Need help? Just ask! 😊
                 }
                 self.user_audio[user_id][article_url] = audio_data
                 
+                # Send audio file
+                filename = f"{self._sanitize_filename(article['title'])}.{AUDIO_EXTENSION}"
+                audio_file = io.BytesIO(audio_data['audio_bytes'])
+                audio_file.name = filename
+                
+                caption = f"🎵 **Podcast Summary:** {article['title']}"
+                if 'voice' in audio_data and audio_data['voice']:
+                    caption += f"\n**Voice:** {audio_data['voice']}"
+                
+                await query.message.reply_audio(
+                    audio=audio_file,
+                    caption=caption,
+                    parse_mode='Markdown'
+                )
+                
+                # Update processing message to show completion
+                await processing_msg.edit_text(f"✅ Audio generated for: {article['title']}")
+                
             except Exception as e:
                 logger.error(f"Error generating audio: {str(e)}")
-                await query.edit_message_text(f"❌ Error generating audio: {str(e)}")
-                return
-        
-        # Send audio file
-        try:
-            filename = f"{self._sanitize_filename(article['title'])}.{AUDIO_EXTENSION}"
-            audio_file = io.BytesIO(audio_data['audio_bytes'])
-            audio_file.name = filename
-            
-            caption = f"🎵 **Podcast Summary:** {article['title']}"
-            if 'voice' in audio_data and audio_data['voice']:
-                caption += f"\n**Voice:** {audio_data['voice']}"
-            
-            await query.message.reply_audio(
-                audio=audio_file,
-                caption=caption,
-                parse_mode='Markdown'
-            )
-            
-            # Edit original message to show completion
-            await query.edit_message_text(f"✅ Audio generated for: {article['title']}")
-            
-        except Exception as e:
-            logger.error(f"Error sending audio: {str(e)}")
-            await query.edit_message_text(f"❌ Error sending audio: {str(e)}")
+                await processing_msg.edit_text(f"❌ Error generating audio: {str(e)}")
 
     async def error_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle errors caused by updates"""
