@@ -48,11 +48,21 @@ def generate_audio(text: str) -> tuple[bytes, str]:
             "--debug"
         ]
 
-        process = subprocess.run(cmd)
+        # Capture stdout and stderr for better error reporting
+        process = subprocess.run(cmd, capture_output=True, text=True)
 
         if process.returncode != 0:
-            logger.error(f"Error generating audio from Kokoro TTS: {process.stderr}")
+            logger.error(f"Error generating audio from Kokoro TTS:")
+            logger.error(f"Return code: {process.returncode}")
+            logger.error(f"Command: {' '.join(cmd)}")
+            logger.error(f"Stdout: {process.stdout}")
+            logger.error(f"Stderr: {process.stderr}")
             return b"", ""
+        
+        # Log success for debugging
+        logger.info(f"Successfully generated audio with voice: {voice}")
+        if process.stdout:
+            logger.debug(f"Kokoro stdout: {process.stdout}")
 
         with open(out_path, "rb") as f:
             return f.read(), voice
