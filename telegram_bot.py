@@ -206,7 +206,15 @@ Need help? Just ask! 😊
 **📰 [{article['title']}]({article['url']})**
 
 **Source:** {article['source']}
-**Matched Topics:**
+"""
+        
+        # Show comment count for Hacker News articles
+        if article['source'] == 'hacker-news' and 'hn_comments' in article:
+            comment_count = article['hn_comments']
+            comment_text = "comment" if comment_count == 1 else "comments"
+            message_text += f"**Comments:** {comment_count} {comment_text}\n"
+        
+        message_text += f"""**Matched Topics:**
 {matches_text}
         """
         

@@ -110,6 +110,11 @@ if st.session_state.fetch_clicked:
             with st.container():
                 st.markdown(f"### [{a['title']}]({a['url']})")
                 st.write(f"**Source:** {a['source']}")
+                # Show comment count for Hacker News articles
+                if a['source'] == 'hacker-news' and 'hn_comments' in a:
+                    comment_count = a['hn_comments']
+                    comment_text = "comment" if comment_count == 1 else "comments"
+                    st.write(f"**Comments:** {comment_count} {comment_text}")
                 st.write(f"**Matched Topics:**")
                 for match in a['matches']:
                     st.write(f"- {match['question']} (LLM: {match['llm_response']})")

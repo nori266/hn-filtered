@@ -54,7 +54,8 @@ class NewsFetcher:
                         "url": story_data.get("url"),
                         "source": "hacker-news",
                         "date": date,
-                        "content": self._get_article_content(story_data.get("url")) if config.USE_CONTENT_FOR_FILTERING else ""
+                        "content": self._get_article_content(story_data.get("url")) if config.USE_CONTENT_FOR_FILTERING else "",
+                        "hn_comments": story_data.get("descendants", 0)
                     })
             return articles
         except Exception as e:
@@ -86,4 +87,4 @@ class NewsFetcher:
         hn_articles = self.fetch_hacker_news()
         all_articles.extend(hn_articles)
         
-        return all_articles 
+        return all_articles
