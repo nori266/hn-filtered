@@ -174,18 +174,19 @@ Need help? Just ask! 😊
                         # Ignore edit errors (message might be too old to edit)
                         pass
             
-            # Final status update
+            # Final status update - Always send completion message
+            completion_message = ""
             if article_count > 0:
-                try:
-                    await processing_msg.edit_text(f"✅ Finished! Found {article_count} relevant article{'s' if article_count != 1 else ''} total.")
-                except Exception:
-                    # If we can't edit the message, send a new one
-                    await update.message.reply_text(f"✅ Finished! Found {article_count} relevant article{'s' if article_count != 1 else ''} total.")
+                completion_message = f"✅ **Processing complete!** Found and sent {article_count} relevant article{'s' if article_count != 1 else ''} matching your topics."
             else:
-                try:
-                    await processing_msg.edit_text("🔍 No relevant articles found for your topics. Try adjusting your topic list with `/topics`.")
-                except Exception:
-                    await update.message.reply_text("🔍 No relevant articles found for your topics. Try adjusting your topic list with `/topics`.")
+                completion_message = "🔍 **Processing complete!** No relevant articles found for your topics. Try adjusting your topic list with `/topics`."
+            
+            # Try to edit the processing message first
+            try:
+                await processing_msg.edit_text(completion_message, parse_mode='Markdown')
+            except Exception:
+                # If we can't edit the message, send a new one
+                await update.message.reply_text(completion_message, parse_mode='Markdown')
                 
         except Exception as e:
             logger.error(f"Error fetching articles: {str(e)}")
@@ -316,34 +317,106 @@ Need help? Just ask! 😊
         
         if article_url in self.user_summaries[user_id]:
             summary = self.user_summaries[user_id][article_url]
-            # Send summary as new message to preserve original article
-            summary_text = f"**📄 Summary of: {article['title']}**\n\n{summary}"
-            
-            # Truncate if too long for Telegram
-            if len(summary_text) > 4000:
-                summary_text = summary_text[:4000] + "..."
-            
-            await query.message.reply_text(summary_text, parse_mode='Markdown')
         else:
-            # Show processing message as new message
-            processing_msg = await query.message.reply_text("🔄 Generating summary...")
-            
+            # Show processing status by editing the message
             try:
+                # Format matches for the original article info
+                matches_text = ""
+                for match in article['matches']:
+                    matches_text += f"• {match['question']} (Match: {match['llm_response']})\n"
+                
+                # Create processing message with original article info
+                processing_text = f"""**📰 [{article['title']}]({article['url']})**
+
+**Source:** {article['source']}
+"""
+                
+                # Show comment count for Hacker News articles
+                if article['source'] == 'hacker-news' and 'hn_comments' in article:
+                    comment_count = article['hn_comments']
+                    comment_text = "comment" if comment_count == 1 else "comments"
+                    processing_text += f"**Comments:** {comment_count} {comment_text}\n"
+                
+                processing_text += f"""**Matched Topics:**
+{matches_text}
+
+🔄 Generating summary..."""
+                
+                # Keep the original buttons
+                keyboard = [
+                    [
+                        InlineKeyboardButton("📄 Summarize", callback_data=f"summarize_{idx}"),
+                        InlineKeyboardButton("🎵 Audio", callback_data=f"audio_{idx}"),
+                    ],
+                    [InlineKeyboardButton("🔗 View Article", url=article['url'])]
+                ]
+                reply_markup = InlineKeyboardMarkup(keyboard)
+                
+                await query.edit_message_text(
+                    processing_text,
+                    parse_mode='Markdown',
+                    reply_markup=reply_markup,
+                    disable_web_page_preview=True
+                )
+                
+                # Generate summary
                 summary = summarize_article(article_url)
                 self.user_summaries[user_id][article_url] = summary
                 
-                # Send summary
-                summary_text = f"**📄 Summary of: {article['title']}**\n\n{summary}"
-                
-                # Truncate if too long for Telegram
-                if len(summary_text) > 4000:
-                    summary_text = summary_text[:4000] + "..."
-                
-                await processing_msg.edit_text(summary_text, parse_mode='Markdown')
-                
             except Exception as e:
-                await processing_msg.edit_text(f"❌ Error generating summary: {str(e)}")
+                logger.error(f"Error generating summary: {str(e)}")
+                await query.message.reply_text(f"❌ Error generating summary: {str(e)}")
                 return
+        
+        # Edit the original message to include the summary
+        try:
+            # Format matches
+            matches_text = ""
+            for match in article['matches']:
+                matches_text += f"• {match['question']} (Match: {match['llm_response']})\n"
+            
+            # Create updated message with article info and summary
+            message_text = f"""**📰 [{article['title']}]({article['url']})**
+
+**Source:** {article['source']}
+"""
+            
+            # Show comment count for Hacker News articles
+            if article['source'] == 'hacker-news' and 'hn_comments' in article:
+                comment_count = article['hn_comments']
+                comment_text = "comment" if comment_count == 1 else "comments"
+                message_text += f"**Comments:** {comment_count} {comment_text}\n"
+            
+            message_text += f"""**Matched Topics:**
+{matches_text}
+
+**📄 Summary:**
+{summary}"""
+            
+            # Truncate if too long for Telegram (max 4096 characters)
+            if len(message_text) > 4000:
+                message_text = message_text[:4000] + "..."
+            
+            # Keep the original buttons
+            keyboard = [
+                [
+                    InlineKeyboardButton("📄 Summarize", callback_data=f"summarize_{idx}"),
+                    InlineKeyboardButton("🎵 Audio", callback_data=f"audio_{idx}"),
+                ],
+                [InlineKeyboardButton("🔗 View Article", url=article['url'])]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(
+                message_text,
+                parse_mode='Markdown',
+                reply_markup=reply_markup,
+                disable_web_page_preview=True
+            )
+            
+        except Exception as e:
+            logger.error(f"Error editing message with summary: {str(e)}")
+            await query.message.reply_text(f"❌ Error displaying summary: {str(e)}")
 
     async def _handle_audio(self, query, user_id: int, idx: int):
         """Handle audio button click"""
