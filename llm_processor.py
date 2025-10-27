@@ -105,7 +105,7 @@ class ArticleMatcher:
             logger.error(f"Error processing input: {str(e)}")
             return []
 
-    def _verify_with_llm(self, article: Dict, questions: List[str], retry_count: int = 3) -> List[Dict]:
+    def _verify_with_llm(self, article: Dict, questions: List[str], summary: str = None, retry_count: int = 3) -> List[Dict]:
         """Verify article relevance against multiple questions/topics with a single LLM call"""
         if not questions:
             return []
@@ -114,12 +114,15 @@ class ArticleMatcher:
         questions_list = '\n'.join([f"{i+1}. {q}" for i, q in enumerate(questions)])
         
         prompt_content = f"Article Content: {article['content'][:2000]}\n" if config.USE_CONTENT_FOR_LLM_FILTERING else ""
+        
+        # Add summary to the prompt if available
+        summary_content = f"Article Summary: {summary}\n" if summary else ""
 
         prompt = f"""Analyze if this article is relevant to each of the following questions/topics. 
 For each question, respond with a single line containing the question number followed by 'yes' or 'no'.
 
 Article Title: {article['title']}
-{prompt_content}
+{summary_content}{prompt_content}
 Questions/Topics:
 {questions_list}
 
@@ -262,6 +265,20 @@ Example:
         try:
             logger.info(f"Processing article: {article['title']}")
             
+            # Generate summary if enabled (before filtering)
+            article_summary = None
+            if config.USE_SUMMARY_FOR_FILTERING:
+                try:
+                    logger.info(f"Generating summary for article: {article['title']}")
+                    article_summary = summarize_article(article['url'])
+                    # Check if summary generation failed
+                    if article_summary.startswith("Error:"):
+                        logger.warning(f"Failed to generate summary for {article['title']}, proceeding without it")
+                        article_summary = None
+                except Exception as e:
+                    logger.warning(f"Exception while generating summary for {article['title']}: {e}, proceeding without it")
+                    article_summary = None
+            
             if config.USE_EMBEDDING_FILTER:
                 # Two-stage filtering: First with embeddings, then with LLM
                 similar_matches = self.matcher.find_similar(article["content"], questions)
@@ -272,7 +289,7 @@ Example:
                     
                 # Process all matches in a single batch
                 matched_questions = [m["text"] for m in similar_matches]
-                verifications = self._verify_with_llm(article, matched_questions)
+                verifications = self._verify_with_llm(article, matched_questions, summary=article_summary)
                 
                 verified_matches = []
                 for match, verification in zip(similar_matches, verifications):
@@ -286,7 +303,7 @@ Example:
             else:
                 # Skip embedding filtering and verify all questions with LLM
                 logger.debug("Skipping embedding filter, verifying all questions with LLM")
-                verifications = self._verify_with_llm(article, questions)
+                verifications = self._verify_with_llm(article, questions, summary=article_summary)
                 
                 verified_matches = [
                     {
@@ -307,6 +324,10 @@ Example:
                 "date": article.get("date", ""),
                 "matches": verified_matches
             }
+            
+            # Store the summary if it was generated
+            if article_summary:
+                processed_article["summary"] = article_summary
             
             # Preserve hn_comments field if it exists
             if "hn_comments" in article:

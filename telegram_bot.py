@@ -167,6 +167,13 @@ Need help? Just ask! 😊
                     self.user_articles[user_id].append(article)
                     processed_urls.add(article['url'])
                     
+                    # Cache the summary if it was generated during filtering
+                    if 'summary' in article and article['summary']:
+                        if user_id not in self.user_summaries:
+                            self.user_summaries[user_id] = {}
+                        self.user_summaries[user_id][article['url']] = article['summary']
+                        logger.info(f"Cached summary for article: {article['title']}")
+                    
                     # Send the article immediately
                     await self._send_article(update, article, article_count)
                     article_count += 1
