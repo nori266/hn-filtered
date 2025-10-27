@@ -22,6 +22,10 @@ if config.TTS_PROVIDER == 'kokoro':
     from tts_utils.kokoro_client import generate_audio
     AUDIO_FORMAT = 'audio/wav'
     AUDIO_EXTENSION = 'wav'
+elif config.TTS_PROVIDER == 'piper':
+    from tts_utils.piper_client import generate_audio
+    AUDIO_FORMAT = 'audio/wav'
+    AUDIO_EXTENSION = 'wav'
 else:
     from tts_utils.elevenlabs_client import generate_audio
     AUDIO_FORMAT = 'audio/mp3'

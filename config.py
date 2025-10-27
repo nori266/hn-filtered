@@ -20,8 +20,8 @@ GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 GROQ_MODEL = "moonshotai/kimi-k2-instruct"
 
 # TTS Configuration
-# Supported values: "kokoro", "elevenlabs"
-TTS_PROVIDER = "kokoro"
+# Supported values: "kokoro", "piper", "elevenlabs"
+TTS_PROVIDER = "piper"
 
 # ElevenLabs configuration
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")

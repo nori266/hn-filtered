@@ -1,14 +1,9 @@
 import streamlit as st
 from llm_processor import summarize_article
-import config
 
-# Dynamically import the TTS client based on the configuration
-if config.TTS_PROVIDER == 'kokoro':
-    from tts_utils.kokoro_client import generate_audio
-    AUDIO_FORMAT = 'audio/wav'
-else:
-    from tts_utils.elevenlabs_client import generate_audio
-    AUDIO_FORMAT = 'audio/mp3'
+from tts_utils.piper_client import generate_audio
+AUDIO_FORMAT = 'audio/wav'
+
 
 # Dummy data mimicking the structure of fetched articles
 dummy_articles = [
