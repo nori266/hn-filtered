@@ -56,6 +56,7 @@ def generate_audio(text: str) -> tuple[bytes, str]:
         
         # Load the voice model
         logger.info(f"Loading voice model: {voice_name}")
+        logger.info(f"Model path: {model_path}")
         voice = PiperVoice.load(model_path)
         
         # Configure synthesis settings
