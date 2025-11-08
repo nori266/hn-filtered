@@ -1,8 +1,31 @@
+from pathlib import Path
+import subprocess
+
 import streamlit as st
 from llm_processor import summarize_article
 
 from tts_utils.piper_client import generate_audio
 AUDIO_FORMAT = 'audio/wav'
+
+VOICE_DIR = Path("tts_utils/piper_voices")
+
+if not VOICE_DIR.exists():
+    print("Downloading TTS model...")
+    VOICE_DIR.mkdir(parents=True, exist_ok=True)
+    print(f"Created directory: {VOICE_DIR.absolute()}")
+    try:
+        result = subprocess.run(
+            ["python3", "-m", "piper.download_voices", "en_US-ryan-high"],
+            check=True,
+            capture_output=True,
+            text=True,
+            cwd=str(VOICE_DIR)
+        )
+        print(f"TTS model downloaded successfully: {result.stdout}")
+        print(f"TTS model files saved to: {VOICE_DIR.absolute()}")
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to download TTS model: {e.stderr}")
+        raise
 
 
 # Dummy data mimicking the structure of fetched articles

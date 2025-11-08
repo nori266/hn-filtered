@@ -4,8 +4,7 @@ from pathlib import Path
 from typing import Dict, List
 import io
 import httpx
-
-from huggingface_hub import snapshot_download
+import subprocess
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler,
@@ -28,16 +27,25 @@ logger = logging.getLogger(__name__)
 
 AUDIO_FORMAT = 'audio/wav'
 AUDIO_EXTENSION = 'wav'
-VOICE_DIR = Path("tts_utils/piper_voices/en_US-ryan-high")
+VOICE_DIR = Path("tts_utils/piper_voices")
 
 if not VOICE_DIR.exists():
     logger.info("Downloading TTS model...")
-    snapshot_download(
-        repo_id="rhasspy/piper-voices",
-        allow_patterns=["en_US-ryan-high/*"],
-        local_dir=str(VOICE_DIR.parent),
-        local_dir_use_symlinks=False
-    )
+    VOICE_DIR.mkdir(parents=True, exist_ok=True)
+    logger.info(f"Created directory: {VOICE_DIR.absolute()}")
+    try:
+        result = subprocess.run(
+            ["python3", "-m", "piper.download_voices", "en_US-ryan-high"],
+            check=True,
+            capture_output=True,
+            text=True,
+            cwd=str(VOICE_DIR)
+        )
+        logger.info(f"TTS model downloaded successfully: {result.stdout}")
+        logger.info(f"TTS model files saved to: {VOICE_DIR.absolute()}")
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Failed to download TTS model: {e.stderr}")
+        raise
 
 
 class TelegramHNBot:
