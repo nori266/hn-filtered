@@ -5,6 +5,7 @@ from typing import Dict, List
 import io
 import httpx
 
+from huggingface_hub import snapshot_download
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, CallbackQueryHandler,
@@ -16,27 +17,28 @@ from telegram.request import HTTPXRequest
 from news_fetcher import NewsFetcher
 from llm_processor import ArticleMatcher, summarize_article
 import config
+from tts_utils.piper_client import generate_audio
 
-# Dynamically import the TTS client based on the configuration
-if config.TTS_PROVIDER == 'kokoro':
-    from tts_utils.kokoro_client import generate_audio
-    AUDIO_FORMAT = 'audio/wav'
-    AUDIO_EXTENSION = 'wav'
-elif config.TTS_PROVIDER == 'piper':
-    from tts_utils.piper_client import generate_audio
-    AUDIO_FORMAT = 'audio/wav'
-    AUDIO_EXTENSION = 'wav'
-else:
-    from tts_utils.elevenlabs_client import generate_audio
-    AUDIO_FORMAT = 'audio/mp3'
-    AUDIO_EXTENSION = 'mp3'
 
-# Enable logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 logger = logging.getLogger(__name__)
+
+AUDIO_FORMAT = 'audio/wav'
+AUDIO_EXTENSION = 'wav'
+VOICE_DIR = Path("tts_utils/piper_voices/en_US-ryan-high")
+
+if not VOICE_DIR.exists():
+    logger.info("Downloading TTS model...")
+    snapshot_download(
+        repo_id="rhasspy/piper-voices",
+        allow_patterns=["en_US-ryan-high/*"],
+        local_dir=str(VOICE_DIR.parent),
+        local_dir_use_symlinks=False
+    )
+
 
 class TelegramHNBot:
     def __init__(self):
