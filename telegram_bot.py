@@ -75,6 +75,13 @@ class TelegramHNBot:
         if len(sanitized) > max_length:
             sanitized = sanitized[:max_length].rstrip('_')
         return sanitized if sanitized else "hn_article"
+    
+    def _escape_markdown(self, text: str) -> str:
+        """Escape special Markdown characters for Telegram"""
+        import re
+        # Escape special characters: _ * [ ] ( ) ~ ` > # + - = | { } . !
+        special_chars = r'_*[]()~`>#+-=|{}.!'
+        return re.sub(f'([{re.escape(special_chars)}])', r'\\\1', text)
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Send a message when the command /start is issued."""
@@ -462,9 +469,9 @@ Need help? Just ask! 😊
                 audio_file = io.BytesIO(audio_data['audio_bytes'])
                 audio_file.name = filename
                 
-                caption = f"🎵 **Podcast Summary:** {article['title']}"
+                caption = f"🎵 **Podcast Summary:** {self._escape_markdown(article['title'])}"
                 if 'voice' in audio_data and audio_data['voice']:
-                    caption += f"\n**Voice:** {audio_data['voice']}"
+                    caption += f"\n**Voice:** {self._escape_markdown(audio_data['voice'])}"
                 
                 await query.message.reply_audio(
                     audio=audio_file,
@@ -502,9 +509,9 @@ Need help? Just ask! 😊
                 audio_file = io.BytesIO(audio_data['audio_bytes'])
                 audio_file.name = filename
                 
-                caption = f"🎵 **Podcast Summary:** {article['title']}"
+                caption = f"🎵 **Podcast Summary:** {self._escape_markdown(article['title'])}"
                 if 'voice' in audio_data and audio_data['voice']:
-                    caption += f"\n**Voice:** {audio_data['voice']}"
+                    caption += f"\n**Voice:** {self._escape_markdown(audio_data['voice'])}"
                 
                 await query.message.reply_audio(
                     audio=audio_file,
@@ -513,7 +520,7 @@ Need help? Just ask! 😊
                 )
                 
                 # Update processing message to show completion
-                await processing_msg.edit_text(f"✅ Audio generated for: {article['title']}")
+                await processing_msg.edit_text(f"✅ Audio generated for: {self._escape_markdown(article['title'])}", parse_mode='Markdown')
                 
             except Exception as e:
                 logger.error(f"Error generating audio: {str(e)}")

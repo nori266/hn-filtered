@@ -39,9 +39,9 @@ dummy_articles = [
         ]
     },
     {
-        'title': 'Dummy Article 2: A Guide to Healthy Eating',
-        'url': 'https://example.com/article2',
-        'source': 'Healthline',
+        'title': 'AI benchmarks are a bad joke – and LLM makers are the ones laughing',
+        'url': 'https://www.theregister.com/2025/11/07/measuring_ai_models_hampered_by/',
+        'source': 'theregister',
         'matches': [
             {'question': 'What are some tips for a balanced diet?', 'llm_response': 'The article provides a comprehensive guide to nutrition and meal planning.'}
         ]
