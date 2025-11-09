@@ -209,10 +209,8 @@ if st.session_state.fetch_clicked:
                                 st.error(f"❌ Error generating audio: {str(e)}")
                     st.rerun()
             with col3:
-                if st.button("View Discussion", key=f"view_discussion_{idx}_{a['url'][:50]}") and a['source'] == 'hacker-news':
-                    st.session_state.view_clicked = True
-                    st.session_state.view_url = a['hn_discussion_url']
-                    st.rerun()
+                if a['source'] == 'hacker-news' and 'hn_discussion_url' in a:
+                    st.link_button("View Discussion", a['hn_discussion_url'])
 
             # Display the regular summary if it exists
             if a['url'] in st.session_state.summaries:
