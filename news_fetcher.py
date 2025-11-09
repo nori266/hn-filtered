@@ -75,8 +75,10 @@ class NewsFetcher:
                             "url": story_data.get("url"),
                             "source": "hacker-news",
                             "date": date,
-                            "content": self._get_article_content(story_data.get("url")) if config.USE_CONTENT_FOR_FILTERING else "",
-                            "hn_comments": comments
+                            "content": self._get_article_content(
+                                story_data.get("url")) if config.USE_CONTENT_FOR_FILTERING else "",
+                            "hn_comments": comments,
+                            "hn_discussion_url": f"https://news.ycombinator.com/item?id={story_id}"
                         })
                         
                         if len(articles) >= config.MAX_ARTICLES_PER_SOURCE:

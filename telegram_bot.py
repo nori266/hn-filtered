@@ -301,7 +301,7 @@ Need help? Just ask! 😊
         if article['source'] == 'hacker-news' and 'hn_discussion_url' in article:
             keyboard.append([InlineKeyboardButton("💬 HN Discussion", url=article['hn_discussion_url'])])
         
-        keyboard.append([InlineKeyboardButton("🔗 View Article", url=article['url'])])
+        # keyboard.append([InlineKeyboardButton("🔗 View Article", url=article['url'])])
         
         reply_markup = InlineKeyboardMarkup(keyboard)
         
@@ -439,7 +439,7 @@ Need help? Just ask! 😊
                         InlineKeyboardButton("📄 Summarize", callback_data=f"summarize_{idx}"),
                         InlineKeyboardButton("🎵 Audio", callback_data=f"audio_{idx}"),
                     ],
-                    [InlineKeyboardButton("🔗 View Article", url=article['url'])]
+                    [InlineKeyboardButton("🔗 View Discussion", callback_data=f"view_discussion_{idx}_{article_url[:50]}", url=article['hn_discussion_url'])]
                 ]
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 
@@ -494,7 +494,7 @@ Need help? Just ask! 😊
                     InlineKeyboardButton("📄 Summarize", callback_data=f"summarize_{idx}"),
                     InlineKeyboardButton("🎵 Audio", callback_data=f"audio_{idx}"),
                 ],
-                [InlineKeyboardButton("🔗 View Article", url=article['url'])]
+                [InlineKeyboardButton("🔗 View Discussion", callback_data=f"view_discussion_{idx}_{article_url[:50]}", url=article['hn_discussion_url'])]
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
