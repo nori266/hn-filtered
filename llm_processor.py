@@ -335,7 +335,11 @@ Example:
             # Preserve hn_comments field if it exists
             if "hn_comments" in article:
                 processed_article["hn_comments"] = article["hn_comments"]
-            
+
+            # Preserve hn_discussion_url field if it exists
+            if "hn_discussion_url" in article:
+                processed_article["hn_discussion_url"] = article["hn_discussion_url"]
+
             # Save to database if there are verified matches
             if verified_matches:
                 self.db.save_article(processed_article)

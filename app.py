@@ -166,7 +166,7 @@ if st.session_state.fetch_clicked:
                     st.write(f"- {match['question']} (LLM: {match['llm_response']})")
 
             # Create columns for buttons to display them side by side
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns(3)
             
             # Use a unique key based on the index and URL
             button_key = f"summarize_{idx}_{a['url'][:50]}"
@@ -207,6 +207,11 @@ if st.session_state.fetch_clicked:
                             except Exception as e:
                                 logging.error(f"Error generating audio: {str(e)}")
                                 st.error(f"❌ Error generating audio: {str(e)}")
+                    st.rerun()
+            with col3:
+                if st.button("View Discussion", key=f"view_discussion_{idx}_{a['url'][:50]}") and a['source'] == 'hacker-news':
+                    st.session_state.view_clicked = True
+                    st.session_state.view_url = a['hn_discussion_url']
                     st.rerun()
 
             # Display the regular summary if it exists
