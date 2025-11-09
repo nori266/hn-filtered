@@ -5,6 +5,8 @@ load_dotenv()
 
 # News API configuration
 NEWS_API_KEY = os.getenv("NEWS_API_KEY")
+
+# For sources besides Hacker News
 NEWS_API_BASE_URL = "https://newsapi.org/v2"
 
 # Hacker News API configuration
@@ -36,7 +38,7 @@ SOURCES = [
 ]
 
 # Number of articles to fetch per source
-MAX_ARTICLES_PER_SOURCE = 10
+MAX_ARTICLES_PER_SOURCE = 30
 
 # Embedding Matcher configuration
 EMBEDDING_SIMILARITY_THRESHOLD = 0.7  # Minimum similarity score for initial article filtering
@@ -50,6 +52,7 @@ USE_SUMMARY_FOR_FILTERING = True  # Whether to generate and use article summarie
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
 TELEGRAM_NOTIFICATION_THRESHOLD = float(os.getenv("TELEGRAM_NOTIFICATION_THRESHOLD", "0.0"))
+ALLOWED_USER_IDS = os.getenv("ALLOWED_USER_IDS", "")
 
 # Autonomous fetch interval for the Telegram bot (in minutes)
 FETCH_INTERVAL_MINUTES = int(os.getenv("FETCH_INTERVAL_MINUTES", "60"))

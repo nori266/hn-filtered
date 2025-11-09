@@ -58,6 +58,9 @@ class TelegramHNBot:
         
         # Load default topics
         self.default_topics = self._load_default_topics()
+        
+        # Parse allowed user IDs
+        self.allowed_user_ids = self._parse_allowed_user_ids()
     
     def _load_default_topics(self) -> str:
         """Load default topics from topics.txt if it exists"""
@@ -65,6 +68,23 @@ class TelegramHNBot:
         if topics_file.exists():
             return topics_file.read_text(encoding="utf-8")
         return ""
+    
+    def _parse_allowed_user_ids(self) -> set:
+        """Parse allowed user IDs from config"""
+        if not config.ALLOWED_USER_IDS:
+            return set()
+        try:
+            return set(int(uid.strip()) for uid in config.ALLOWED_USER_IDS.split(',') if uid.strip())
+        except ValueError as e:
+            logger.error(f"Error parsing ALLOWED_USER_IDS: {e}")
+            return set()
+    
+    def _is_user_allowed(self, user_id: int) -> bool:
+        """Check if user is allowed to use the bot"""
+        # If no restrictions are set, allow everyone
+        if not self.allowed_user_ids:
+            return True
+        return user_id in self.allowed_user_ids
     
     def _sanitize_filename(self, title: str, max_length: int = 50) -> str:
         """Sanitize article title to create a valid filename"""
@@ -85,6 +105,12 @@ class TelegramHNBot:
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Send a message when the command /start is issued."""
+        user_id = update.effective_user.id
+        if not self._is_user_allowed(user_id):
+            await update.message.reply_text("❌ Unauthorized access. This bot is restricted to specific users only.")
+            logger.warning(f"Unauthorized access attempt by user {user_id}")
+            return
+        
         welcome_text = """
 🤖 **Hacker News Filter Bot**
 
@@ -107,6 +133,12 @@ Ready to get started? Use `/topics` to set your interests!
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Send help information"""
+        user_id = update.effective_user.id
+        if not self._is_user_allowed(user_id):
+            await update.message.reply_text("❌ Unauthorized access. This bot is restricted to specific users only.")
+            logger.warning(f"Unauthorized access attempt by user {user_id}")
+            return
+        
         help_text = """
 📖 **Help - How to Use the Bot**
 
@@ -140,6 +172,11 @@ Need help? Just ask! 😊
     async def topics_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle topics command - show current topics or instructions to set new ones"""
         user_id = update.effective_user.id
+        if not self._is_user_allowed(user_id):
+            await update.message.reply_text("❌ Unauthorized access. This bot is restricted to specific users only.")
+            logger.warning(f"Unauthorized access attempt by user {user_id}")
+            return
+        
         current_topics = self.user_topics.get(user_id, self.default_topics)
         
         if current_topics:
@@ -154,6 +191,11 @@ Need help? Just ask! 😊
     async def fetch_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Fetch and filter news articles"""
         user_id = update.effective_user.id
+        if not self._is_user_allowed(user_id):
+            await update.message.reply_text("❌ Unauthorized access. This bot is restricted to specific users only.")
+            logger.warning(f"Unauthorized access attempt by user {user_id}")
+            return
+        
         topics = self.user_topics.get(user_id, self.default_topics)
         
         if not topics.strip():
@@ -267,6 +309,11 @@ Need help? Just ask! 😊
     async def handle_text_message(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle text messages (topic updates)"""
         user_id = update.effective_user.id
+        if not self._is_user_allowed(user_id):
+            await update.message.reply_text("❌ Unauthorized access. This bot is restricted to specific users only.")
+            logger.warning(f"Unauthorized access attempt by user {user_id}")
+            return
+        
         text = update.message.text.strip()
         
         if text:
@@ -283,6 +330,11 @@ Need help? Just ask! 😊
     async def handle_document(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Handle document uploads (topic files)"""
         user_id = update.effective_user.id
+        if not self._is_user_allowed(user_id):
+            await update.message.reply_text("❌ Unauthorized access. This bot is restricted to specific users only.")
+            logger.warning(f"Unauthorized access attempt by user {user_id}")
+            return
+        
         document = update.message.document
         
         if document.mime_type == 'text/plain' or document.file_name.endswith('.txt'):
@@ -312,6 +364,11 @@ Need help? Just ask! 😊
         await query.answer()
         
         user_id = update.effective_user.id
+        if not self._is_user_allowed(user_id):
+            await query.message.reply_text("❌ Unauthorized access. This bot is restricted to specific users only.")
+            logger.warning(f"Unauthorized access attempt by user {user_id}")
+            return
+        
         data = query.data
         
         if user_id not in self.user_articles:
@@ -570,6 +627,12 @@ Need help? Just ask! 😊
         if not config.TELEGRAM_BOT_TOKEN:
             logger.error("TELEGRAM_BOT_TOKEN not found in config!")
             return
+        
+        # Log access control status
+        if self.allowed_user_ids:
+            logger.info(f"Bot access restricted to {len(self.allowed_user_ids)} user(s): {sorted(self.allowed_user_ids)}")
+        else:
+            logger.info("Bot access is open to all users (no restrictions set)")
         
         # Create HTTP client with custom SSL context for better compatibility
         # This helps with certificate verification issues
