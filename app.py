@@ -4,9 +4,11 @@ import os
 import logging
 import threading
 import time
+import re
 from news_fetcher import NewsFetcher
 from llm_processor import ArticleMatcher, summarize_article
-import config
+from tts_utils.piper_client import generate_audio
+from pathlib import Path
 
 def log_mem():
     while True:
@@ -18,15 +20,8 @@ def log_mem():
 memory_thread = threading.Thread(target=log_mem, daemon=True)
 memory_thread.start()
 
-# Dynamically import the TTS client based on the configuration
-if config.TTS_PROVIDER == 'kokoro':
-    from tts_utils.kokoro_client import generate_audio
-    AUDIO_FORMAT = 'audio/wav'
-else:
-    from tts_utils.elevenlabs_client import generate_audio
-    AUDIO_FORMAT = 'audio/mp3'
-from pathlib import Path
-import re
+AUDIO_FORMAT = 'audio/wav'
+AUDIO_EXTENSION = 'wav'
 
 # Load default topics from topics.txt if it exists in the project root
 TOPICS_FILE = Path(__file__).with_name("topics.txt")
@@ -49,6 +44,13 @@ def sanitize_filename(title, max_length=50):
         sanitized = sanitized[:max_length].rstrip('_')
     return sanitized if sanitized else "hn_article"
 
+def escape_markdown(text: str) -> str:
+    """
+    Escape special Markdown characters for display
+    """
+    special_chars = r'_*[]()~`>#+-=|{}.!'
+    return re.sub(f'([{re.escape(special_chars)}])', r'\\\1', text)
+
 st.title("Hacker News Filter")
 
 # Initialize session state
@@ -62,6 +64,10 @@ if 'audio_summaries' not in st.session_state:
     st.session_state.audio_summaries = {}
 if 'voice_info' not in st.session_state:
     st.session_state.voice_info = {}
+if 'processing_complete' not in st.session_state:
+    st.session_state.processing_complete = False
+if 'article_count' not in st.session_state:
+    st.session_state.article_count = 0
 
 # File uploader for topics
 uploaded_file = st.file_uploader("Or upload a file with topics (one per line)", type=['txt'])
@@ -75,6 +81,8 @@ if 'fetch_clicked' not in st.session_state:
 # Handle the fetch button click
 if st.button("Fetch and Filter News"):
     st.session_state.fetch_clicked = True
+    st.session_state.processing_complete = False
+    st.session_state.article_count = 0
     topics_text = ""
     if uploaded_file is not None:
         topics_text = uploaded_file.read().decode("utf-8")
@@ -86,19 +94,57 @@ if st.button("Fetch and Filter News"):
     if not topics_text.strip():
         st.warning("Please enter at least one topic or upload a file.")
         st.session_state.processed_articles = []
+        st.session_state.processing_complete = True
     else:
-        with st.spinner("Fetching and filtering news..."):
+        # Create a placeholder for status updates
+        status_placeholder = st.empty()
+        status_placeholder.info("🔄 Fetching and filtering news... This may take a moment.")
+        
+        # Create a container for progressive article display
+        articles_container = st.container()
+        
+        try:
             fetcher = NewsFetcher()
             matcher = ArticleMatcher(input_text=topics_text)
             articles = fetcher.fetch_all_articles()
-            # Process all articles first
+            
+            # Process articles progressively
             processed_urls = set()
             st.session_state.processed_articles = []  # Clear previous results
+            st.session_state.summaries = {}  # Clear previous summaries
+            st.session_state.audio = {}  # Clear previous audio
+            st.session_state.audio_summaries = {}  # Clear previous audio summaries
+            st.session_state.voice_info = {}  # Clear previous voice info
+            
             for article in matcher.process_articles(articles):
-                if article['url'] not in processed_urls:
+                if article['url'] not in processed_urls and article.get('matches'):
                     st.session_state.processed_articles.append(article)
                     processed_urls.add(article['url'])
-            st.rerun()
+                    st.session_state.article_count += 1
+                    
+                    # Cache the summary if it was generated during filtering
+                    if 'summary' in article and article['summary']:
+                        st.session_state.summaries[article['url']] = article['summary']
+                        logging.info(f"Cached summary for article: {article['title']}")
+                    
+                    # Update status
+                    status_placeholder.info(f"🔄 Processing articles... Found {st.session_state.article_count} relevant article{'s' if st.session_state.article_count != 1 else ''} so far...")
+            
+            # Mark processing as complete
+            st.session_state.processing_complete = True
+            
+            # Final status update
+            if st.session_state.article_count > 0:
+                status_placeholder.success(f"✅ Processing complete! Found {st.session_state.article_count} relevant article{'s' if st.session_state.article_count != 1 else ''} matching your topics.")
+            else:
+                status_placeholder.info("🔍 Processing complete! No relevant articles found for your topics. Try adjusting your topic list.")
+                
+        except Exception as e:
+            logging.error(f"Error fetching articles: {str(e)}")
+            status_placeholder.error(f"❌ Error fetching articles: {str(e)}")
+            st.session_state.processing_complete = True
+        
+        st.rerun()
 
 # Display results if we have any
 if st.session_state.fetch_clicked:
@@ -128,28 +174,40 @@ if st.session_state.fetch_clicked:
             # Summarize button (first column)
             with col1:
                 if st.button("Summarize", key=button_key):
-                    with st.spinner("Generating summary..."):
-                        summary = summarize_article(a['url'])
-                        st.session_state.summaries[a['url']] = summary
-                        st.rerun()
+                    # Check if summary already exists (cached)
+                    if a['url'] not in st.session_state.summaries:
+                        with st.spinner("Generating summary..."):
+                            try:
+                                summary = summarize_article(a['url'])
+                                st.session_state.summaries[a['url']] = summary
+                            except Exception as e:
+                                logging.error(f"Error generating summary: {str(e)}")
+                                st.error(f"❌ Error generating summary: {str(e)}")
+                    st.rerun()
             
             # Play Audio button (second column)
             with col2:
                 audio_key = f"play_{idx}_{a['url'][:50]}"
                 if st.button("Play Audio", key=audio_key):
-                    with st.spinner("Generating podcast-style summary..."):
-                        # Generate a new summary in podcast format
-                        audio_summary = summarize_article(a['url'], audio_format=True)
-                        st.session_state.audio_summaries[a['url']] = audio_summary
-                        
-                        # Generate and store the audio and voice info
-                        audio_bytes, voice = generate_audio(audio_summary)
-                        if audio_bytes:
-                            st.session_state.audio[a['url']] = audio_bytes
-                            st.session_state.voice_info[a['url']] = voice
-                        else:
-                            st.error("Could not generate audio.")
-                        st.rerun()
+                    # Check if audio already exists
+                    if a['url'] not in st.session_state.audio:
+                        with st.spinner("Generating podcast-style summary and audio..."):
+                            try:
+                                # Generate a new summary in podcast format
+                                audio_summary = summarize_article(a['url'], audio_format=True)
+                                st.session_state.audio_summaries[a['url']] = audio_summary
+                                
+                                # Generate and store the audio and voice info
+                                audio_bytes, voice = generate_audio(audio_summary)
+                                if audio_bytes:
+                                    st.session_state.audio[a['url']] = audio_bytes
+                                    st.session_state.voice_info[a['url']] = voice
+                                else:
+                                    st.error("❌ Could not generate audio.")
+                            except Exception as e:
+                                logging.error(f"Error generating audio: {str(e)}")
+                                st.error(f"❌ Error generating audio: {str(e)}")
+                    st.rerun()
 
             # Display the regular summary if it exists
             if a['url'] in st.session_state.summaries:
@@ -161,8 +219,7 @@ if st.session_state.fetch_clicked:
                 st.audio(st.session_state.audio[a['url']], format=AUDIO_FORMAT)
                 
                 # Add download button for the audio
-                file_extension = 'wav' if config.TTS_PROVIDER == 'kokoro' else 'mp3'
-                filename = f"{sanitize_filename(a['title'])}.{file_extension}"
+                filename = f"{sanitize_filename(a['title'])}.{AUDIO_EXTENSION}"
                 mime_type = AUDIO_FORMAT
                 
                 st.download_button(
@@ -184,5 +241,5 @@ if st.session_state.fetch_clicked:
 
             st.markdown("---")
 
-if not st.session_state.processed_articles and st.session_state.fetch_clicked:
+if not st.session_state.processed_articles and st.session_state.fetch_clicked and st.session_state.processing_complete:
     st.info("No relevant articles found for the given topics.")

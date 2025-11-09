@@ -294,9 +294,15 @@ Need help? Just ask! 😊
             [
                 InlineKeyboardButton("📄 Summarize", callback_data=f"summarize_{idx}"),
                 InlineKeyboardButton("🎵 Audio", callback_data=f"audio_{idx}"),
-            ],
-            [InlineKeyboardButton("🔗 View Article", url=article['url'])]
+            ]
         ]
+        
+        # Add HN discussion button for Hacker News articles
+        if article['source'] == 'hacker-news' and 'hn_discussion_url' in article:
+            keyboard.append([InlineKeyboardButton("💬 HN Discussion", url=article['hn_discussion_url'])])
+        
+        keyboard.append([InlineKeyboardButton("🔗 View Article", url=article['url'])])
+        
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await update.message.reply_text(
