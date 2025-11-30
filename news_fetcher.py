@@ -10,6 +10,7 @@ class NewsFetcher:
     def __init__(self):
         self.news_api_key = config.NEWS_API_KEY
         self.hn_api_url = config.HN_API_BASE_URL
+        self.hn_stats = None
 
     def fetch_news_api_articles(self, source: str) -> List[Dict]:
         """Fetch articles from News API sources"""
@@ -102,7 +103,9 @@ class NewsFetcher:
             if earliest_time != float('inf'):
                 earliest_time_str = datetime.fromtimestamp(earliest_time).strftime('%Y-%m-%d %H:%M:%S')
 
-            print(f"HN Stats (last 24h): {total_in_24h} total stories (earliest: {earliest_time_str}), {total_with_min_comments} with >={min_comments} comments")
+            stats_msg = f"HN Stats (last 24h): {total_in_24h} total stories (earliest: {earliest_time_str}), {total_with_min_comments} with >={min_comments} comments"
+            print(stats_msg)
+            self.hn_stats = stats_msg
             
             # Now take only the top N qualifying stories
             articles_to_process = qualifying_stories[:config.MAX_ARTICLES_PER_SOURCE]

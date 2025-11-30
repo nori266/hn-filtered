@@ -251,6 +251,9 @@ Need help? Just ask! 😊
             else:
                 completion_message = "🔍 **Processing complete!** No relevant articles found for your topics. Try adjusting your topic list with `/topics`."
             
+            if fetcher.hn_stats:
+                completion_message += f"\n\n📊 {fetcher.hn_stats}"
+            
             # Try to edit the processing message first
             try:
                 await processing_msg.edit_text(completion_message, parse_mode='Markdown')
