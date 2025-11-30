@@ -94,10 +94,9 @@ class NewsFetcher:
                         
                     comments = story_data.get("descendants", 0)
                     
-                    if comments >= min_comments:
+                    if comments >= min_comments and story_data.get("url"):
                         total_with_min_comments += 1
-                        if story_data.get("url"):
-                            qualifying_stories.append(story_data)
+                        qualifying_stories.append(story_data)
 
             earliest_time_str = "N/A"
             if earliest_time != float('inf'):
