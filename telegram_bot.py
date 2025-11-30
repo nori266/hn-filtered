@@ -239,7 +239,10 @@ Need help? Just ask! 😊
                     
                     # Update the processing message with current progress
                     try:
-                        await processing_msg.edit_text(f"🔄 Processing articles... Found {article_count} relevant article{'s' if article_count != 1 else ''} so far...")
+                        msg_text = f"🔄 Processing articles... Found {article_count} relevant article{'s' if article_count != 1 else ''} so far..."
+                        if fetcher.hn_stats:
+                            msg_text += f"\n\n📊 {fetcher.hn_stats}"
+                        await processing_msg.edit_text(msg_text)
                     except Exception:
                         # Ignore edit errors (message might be too old to edit)
                         pass

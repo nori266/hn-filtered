@@ -103,7 +103,7 @@ class NewsFetcher:
             if earliest_time != float('inf'):
                 earliest_time_str = datetime.fromtimestamp(earliest_time).strftime('%Y-%m-%d %H:%M:%S')
 
-            stats_msg = f"HN Stats (last 24h): {total_in_24h} total stories (earliest: {earliest_time_str}), {total_with_min_comments} with >={min_comments} comments"
+            stats_msg = f"HN Stats: {total_in_24h} total stories (earliest: {earliest_time_str}), {total_with_min_comments} with >={min_comments} comments"
             print(stats_msg)
             self.hn_stats = stats_msg
             
