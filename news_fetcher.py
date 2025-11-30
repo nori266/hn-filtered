@@ -3,6 +3,8 @@ from typing import List, Dict
 import config
 from newspaper import Article
 from datetime import datetime, timedelta
+import concurrent.futures
+
 
 class NewsFetcher:
     def __init__(self):
@@ -45,46 +47,81 @@ class NewsFetcher:
             cutoff_time = datetime.now() - timedelta(hours=24)
             cutoff_timestamp = int(cutoff_time.timestamp())
             
-            articles = []
             total_in_24h = 0
             total_with_min_comments = 0
+            qualifying_stories = []
             
-            for story_id in story_ids:
-                story_response = requests.get(f"{self.hn_api_url}/item/{story_id}.json")
-                story_data = story_response.json()
+            def fetch_story_details(story_id):
+                try:
+                    resp = requests.get(f"{self.hn_api_url}/item/{story_id}.json", timeout=10)
+                    if resp.status_code == 200:
+                        return resp.json()
+                except Exception:
+                    pass
+                return None
+
+            # Fetch stories in parallel to speed up the scanning process
+            # We scan up to 200 stories or all returned IDs, whichever is smaller, to be reasonable
+            # But to be accurate we should scan until we hit the time barrier.
+            # Since we don't know which ID corresponds to which time without checking, 
+            # and IDs are roughly chronological, we can process them in batches or just all of them.
+            # newstories returns ~500 IDs. Fetching 500 small JSONs in parallel is fine.
+            
+            earliest_time = float('inf')
+            
+            with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+                # Map returns results in order
+                results = executor.map(fetch_story_details, story_ids)
                 
-                if not story_data:
-                    continue
-                    
-                story_time = story_data.get("time", 0)
-                
-                # stop when we reach stories older than 24h
-                if story_time < cutoff_timestamp:
-                    break
-                
-                total_in_24h += 1
-                comments = story_data.get("descendants", 0)
-                
-                if comments >= min_comments:
-                    total_with_min_comments += 1
-                    
-                    if story_data.get("url"):
-                        date = datetime.fromtimestamp(story_time).isoformat()
-                        articles.append({
-                            "title": story_data.get("title", ""),
-                            "url": story_data.get("url"),
-                            "source": "hacker-news",
-                            "date": date,
-                            "content": self._get_article_content(
-                                story_data.get("url")) if config.USE_CONTENT_FOR_FILTERING else "",
-                            "hn_comments": comments,
-                            "hn_discussion_url": f"https://news.ycombinator.com/item?id={story_id}"
-                        })
+                for story_data in results:
+                    if not story_data:
+                        continue
                         
-                        if len(articles) >= config.MAX_ARTICLES_PER_SOURCE:
-                            break
+                    story_time = story_data.get("time", 0)
+                    
+                    # stop when we reach stories older than 24h
+                    # Note: Since we fetch in parallel, we might process a slightly older story 
+                    # before a newer one if we didn't preserve order, but map preserves order.
+                    # However, if one request hangs, it blocks. 
+
+                    if story_time < cutoff_timestamp:
+                        continue
+                    
+                    total_in_24h += 1
+                    if story_time < earliest_time:
+                        earliest_time = story_time
+                        
+                    comments = story_data.get("descendants", 0)
+                    
+                    if comments >= min_comments:
+                        total_with_min_comments += 1
+                        if story_data.get("url"):
+                            qualifying_stories.append(story_data)
+
+            earliest_time_str = "N/A"
+            if earliest_time != float('inf'):
+                earliest_time_str = datetime.fromtimestamp(earliest_time).strftime('%Y-%m-%d %H:%M:%S')
+
+            print(f"HN Stats (last 24h): {total_in_24h} total stories (earliest: {earliest_time_str}), {total_with_min_comments} with >={min_comments} comments")
             
-            print(f"HN Stats (last 24h): {total_in_24h} total stories, {total_with_min_comments} with >={min_comments} comments, fetched {len(articles)}")
+            # Now take only the top N qualifying stories
+            articles_to_process = qualifying_stories[:config.MAX_ARTICLES_PER_SOURCE]
+            articles = []
+            
+            for story_data in articles_to_process:
+                date = datetime.fromtimestamp(story_data.get("time")).isoformat()
+                articles.append({
+                    "title": story_data.get("title", ""),
+                    "url": story_data.get("url"),
+                    "source": "hacker-news",
+                    "date": date,
+                    "content": self._get_article_content(
+                        story_data.get("url")) if config.USE_CONTENT_FOR_FILTERING else "",
+                    "hn_comments": story_data.get("descendants", 0),
+                    "hn_discussion_url": f"https://news.ycombinator.com/item?id={story_data.get('id')}"
+                })
+            
+            print(f"Fetched content for {len(articles)} articles (Limit: {config.MAX_ARTICLES_PER_SOURCE})")
             print(f"Coverage: {len(articles)}/{total_with_min_comments} ({100*len(articles)/max(total_with_min_comments,1):.1f}%)")
             
             return articles
