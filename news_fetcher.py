@@ -103,10 +103,6 @@ class NewsFetcher:
             if earliest_time != float('inf'):
                 earliest_time_str = datetime.fromtimestamp(earliest_time).strftime('%Y-%m-%d %H:%M:%S')
 
-            stats_msg = f"HN Stats: {total_in_24h} total stories (earliest: {earliest_time_str}), {total_with_min_comments} with >={min_comments} comments"
-            print(stats_msg)
-            self.hn_stats = stats_msg
-            
             # Now take only the top N qualifying stories
             articles_to_process = qualifying_stories[:config.MAX_ARTICLES_PER_SOURCE]
             articles = []
@@ -124,8 +120,11 @@ class NewsFetcher:
                     "hn_discussion_url": f"https://news.ycombinator.com/item?id={story_data.get('id')}"
                 })
             
+            stats_msg = f"HN Stats: {total_in_24h} total stories (earliest: {earliest_time_str}), {total_with_min_comments} with >={min_comments} comments\nCoverage: {len(articles)}/{total_with_min_comments} ({100*len(articles)/max(total_with_min_comments,1):.1f}%)"
+            print(stats_msg)
+            self.hn_stats = stats_msg
+            
             print(f"Fetched content for {len(articles)} articles (Limit: {config.MAX_ARTICLES_PER_SOURCE})")
-            print(f"Coverage: {len(articles)}/{total_with_min_comments} ({100*len(articles)/max(total_with_min_comments,1):.1f}%)")
             
             return articles
         except Exception as e:
