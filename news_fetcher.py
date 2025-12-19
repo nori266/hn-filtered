@@ -3,7 +3,7 @@ from typing import List, Dict
 import config
 from newspaper import Article
 from datetime import datetime, timedelta
-import concurrent.futures
+
 
 
 class NewsFetcher:
@@ -37,77 +37,77 @@ class NewsFetcher:
             return []
 
     def fetch_hacker_news(self, min_comments: int = 10) -> List[Dict]:
-        """Fetch stories from Hacker News with optional comment filter"""
+        """Fetch hottest stories from Hacker News (by comment count) from the last 7 days"""
         try:
-            # get newstories instead of topstories for chronological order
-            response = requests.get(f"{self.hn_api_url}/newstories.json")
-            response.raise_for_status()
-            story_ids = response.json()
+            # Use Algolia HN Search API - no API key required!
+            # Search for stories from the last 7 days, sorted by number of comments
+            algolia_url = "https://hn.algolia.com/api/v1/search"
             
-            # calculate 24h cutoff
-            cutoff_time = datetime.now() - timedelta(hours=24)
+            # Calculate 7-day cutoff timestamp
+            cutoff_time = datetime.now() - timedelta(days=7)
             cutoff_timestamp = int(cutoff_time.timestamp())
             
-            total_in_24h = 0
-            total_with_min_comments = 0
-            qualifying_stories = []
+            # Algolia params:
+            # - tags=story: only get stories (not comments, polls, etc.)
+            # - numericFilters: filter by created_at_i (unix timestamp) and num_comments
+            # - hitsPerPage: number of results per page
+            params = {
+                "tags": "story",
+                "numericFilters": f"created_at_i>{cutoff_timestamp},num_comments>={min_comments}",
+                "hitsPerPage": 200,  # Fetch more to get good coverage
+            }
             
-            def fetch_story_details(story_id):
-                try:
-                    resp = requests.get(f"{self.hn_api_url}/item/{story_id}.json", timeout=10)
-                    if resp.status_code == 200:
-                        return resp.json()
-                except Exception:
-                    pass
-                return None
-
-            # Fetch stories in parallel to speed up the scanning process
-            # We scan up to 200 stories or all returned IDs, whichever is smaller, to be reasonable
-            # But to be accurate we should scan until we hit the time barrier.
-            # Since we don't know which ID corresponds to which time without checking, 
-            # and IDs are roughly chronological, we can process them in batches or just all of them.
-            # newstories returns ~500 IDs. Fetching 500 small JSONs in parallel is fine.
+            all_stories = []
+            page = 0
+            total_hits = 0
+            
+            # Paginate through results to get all qualifying stories
+            while True:
+                params["page"] = page
+                response = requests.get(algolia_url, params=params, timeout=30)
+                response.raise_for_status()
+                data = response.json()
+                
+                hits = data.get("hits", [])
+                total_hits = data.get("nbHits", 0)
+                
+                if not hits:
+                    break
+                    
+                all_stories.extend(hits)
+                
+                # Stop if we've fetched enough or no more pages
+                if len(all_stories) >= total_hits or page >= data.get("nbPages", 1) - 1:
+                    break
+                    
+                page += 1
+                
+                # Limit pagination to avoid excessive API calls
+                if page >= 5:  # Max 1000 stories (5 pages * 200)
+                    break
+            
+            # Sort by number of comments (descending) to get hottest first
+            all_stories.sort(key=lambda x: x.get("num_comments", 0), reverse=True)
+            
+            # Filter out stories without URLs
+            qualifying_stories = [s for s in all_stories if s.get("url")]
             
             earliest_time = float('inf')
+            for story in qualifying_stories:
+                story_time = story.get("created_at_i", 0)
+                if story_time < earliest_time:
+                    earliest_time = story_time
             
-            with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
-                # Map returns results in order
-                results = executor.map(fetch_story_details, story_ids)
-                
-                for story_data in results:
-                    if not story_data:
-                        continue
-                        
-                    story_time = story_data.get("time", 0)
-                    
-                    # stop when we reach stories older than 24h
-                    # Note: Since we fetch in parallel, we might process a slightly older story 
-                    # before a newer one if we didn't preserve order, but map preserves order.
-                    # However, if one request hangs, it blocks. 
-
-                    if story_time < cutoff_timestamp:
-                        continue
-                    
-                    total_in_24h += 1
-                    if story_time < earliest_time:
-                        earliest_time = story_time
-                        
-                    comments = story_data.get("descendants", 0)
-                    
-                    if comments >= min_comments and story_data.get("url"):
-                        total_with_min_comments += 1
-                        qualifying_stories.append(story_data)
-
             earliest_time_str = "N/A"
             if earliest_time != float('inf'):
                 earliest_time_str = datetime.fromtimestamp(earliest_time).strftime('%Y-%m-%d %H:%M:%S')
 
-            # Now take only the top N qualifying stories
+            # Take the top N stories by comment count
             articles_to_process = qualifying_stories[:config.MAX_ARTICLES_PER_SOURCE]
             articles = []
             
             for story_data in articles_to_process:
-                date = datetime.fromtimestamp(story_data.get("time")).isoformat()
+                date = datetime.fromtimestamp(story_data.get("created_at_i", 0)).isoformat()
                 articles.append({
                     "title": story_data.get("title", ""),
                     "url": story_data.get("url"),
@@ -115,15 +115,18 @@ class NewsFetcher:
                     "date": date,
                     "content": self._get_article_content(
                         story_data.get("url")) if config.USE_CONTENT_FOR_FILTERING else "",
-                    "hn_comments": story_data.get("descendants", 0),
-                    "hn_discussion_url": f"https://news.ycombinator.com/item?id={story_data.get('id')}"
+                    "hn_comments": story_data.get("num_comments", 0),
+                    "hn_discussion_url": f"https://news.ycombinator.com/item?id={story_data.get('objectID')}"
                 })
             
-            stats_msg = f"HN Stats: {total_in_24h} total stories (earliest: {earliest_time_str}), {total_with_min_comments} with >={min_comments} comments\nCoverage: {len(articles)}/{total_with_min_comments} ({100*len(articles)/max(total_with_min_comments,1):.1f}%)"
+            stats_msg = f"HN Stats (last 7 days): {total_hits} stories with >={min_comments} comments (earliest: {earliest_time_str})\nCoverage: {len(articles)}/{len(qualifying_stories)} ({100*len(articles)/max(len(qualifying_stories),1):.1f}%)"
             print(stats_msg)
             self.hn_stats = stats_msg
             
-            print(f"Fetched content for {len(articles)} articles (Limit: {config.MAX_ARTICLES_PER_SOURCE})")
+            if articles:
+                top_comments = articles[0].get("hn_comments", 0)
+                bottom_comments = articles[-1].get("hn_comments", 0) if len(articles) > 1 else top_comments
+                print(f"Fetched {len(articles)} hottest articles (comments range: {bottom_comments}-{top_comments}, Limit: {config.MAX_ARTICLES_PER_SOURCE})")
             
             return articles
         except Exception as e:

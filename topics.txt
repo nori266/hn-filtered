@@ -4,16 +4,14 @@ RAG (Retrieval Augmented Generation)
 vector search
 AI agents
 MCP (Model Context Protocol)
-AI code assistants and proprietary code
-AI tutorials
+AI coding tools
 AI hands-on
 AI security
-AI in IRT (Incident Response Team)
-AI in SIEM (Security Information and Event Management)
 emergent misalignment
 AI ethics
 learning foreign languages
 different work cultures
-MBA
 project management
 note taking
+AI adoption in enterprise
+new LLM
