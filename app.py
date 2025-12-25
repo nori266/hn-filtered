@@ -10,6 +10,11 @@ from llm_processor import ArticleMatcher, summarize_article
 from tts_utils.piper_client import generate_audio
 from pathlib import Path
 
+
+@st.cache_resource
+def get_news_fetcher() -> NewsFetcher:
+    return NewsFetcher()
+
 def log_mem():
     while True:
         rss_mb = psutil.Process(os.getpid()).memory_info().rss / (1024**2)
@@ -104,7 +109,7 @@ if st.button("Fetch and Filter News"):
         articles_container = st.container()
         
         try:
-            fetcher = NewsFetcher()
+            fetcher = get_news_fetcher()
             matcher = ArticleMatcher(input_text=topics_text)
             articles = fetcher.fetch_all_articles()
             

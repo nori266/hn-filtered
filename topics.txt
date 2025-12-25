@@ -15,3 +15,4 @@ project management
 note taking
 AI adoption in enterprise
 new LLM
+Claude Code

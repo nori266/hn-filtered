@@ -1,5 +1,5 @@
 import requests
-from typing import List, Dict
+from typing import List, Dict, Set
 import config
 from newspaper import Article
 from datetime import datetime, timedelta
@@ -11,6 +11,19 @@ class NewsFetcher:
         self.news_api_key = config.NEWS_API_KEY
         self.hn_api_url = config.HN_API_BASE_URL
         self.hn_stats = None
+        self._seen_urls: Set[str] = set()
+
+    def reset_session(self) -> None:
+        self._seen_urls.clear()
+
+    def _mark_if_new(self, url: str) -> bool:
+        normalized = (url or "").strip()
+        if not normalized:
+            return False
+        if normalized in self._seen_urls:
+            return False
+        self._seen_urls.add(normalized)
+        return True
 
     def fetch_news_api_articles(self, source: str) -> List[Dict]:
         """Fetch articles from News API sources"""
@@ -25,13 +38,19 @@ class NewsFetcher:
             response = requests.get(url, params=params)
             response.raise_for_status()
             articles = response.json().get("articles", [])
-            return [{
-                "title": article["title"],
-                "url": article["url"],
-                "source": source,
-                "date": article.get("publishedAt", ""),
-                "content": self._get_article_content(article["url"]) if config.USE_CONTENT_FOR_FILTERING else ""
-            } for article in articles]
+            results: List[Dict] = []
+            for article in articles:
+                article_url = article.get("url", "")
+                if not self._mark_if_new(article_url):
+                    continue
+                results.append({
+                    "title": article["title"],
+                    "url": article_url,
+                    "source": source,
+                    "date": article.get("publishedAt", ""),
+                    "content": self._get_article_content(article_url) if config.USE_CONTENT_FOR_FILTERING else ""
+                })
+            return results
         except Exception as e:
             print(f"Error fetching from {source}: {str(e)}")
             return []
@@ -108,13 +127,16 @@ class NewsFetcher:
             
             for story_data in articles_to_process:
                 date = datetime.fromtimestamp(story_data.get("created_at_i", 0)).isoformat()
+                story_url = story_data.get("url")
+                if not self._mark_if_new(story_url):
+                    continue
                 articles.append({
                     "title": story_data.get("title", ""),
-                    "url": story_data.get("url"),
+                    "url": story_url,
                     "source": "hacker-news",
                     "date": date,
                     "content": self._get_article_content(
-                        story_data.get("url")) if config.USE_CONTENT_FOR_FILTERING else "",
+                        story_url) if config.USE_CONTENT_FOR_FILTERING else "",
                     "hn_comments": story_data.get("num_comments", 0),
                     "hn_discussion_url": f"https://news.ycombinator.com/item?id={story_data.get('objectID')}"
                 })

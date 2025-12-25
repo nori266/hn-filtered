@@ -55,6 +55,7 @@ class TelegramHNBot:
         self.user_articles = {}  # Store processed articles per user
         self.user_summaries = {}  # Store summaries per user
         self.user_audio = {}  # Store audio files per user
+        self.fetcher = NewsFetcher()
         
         # Load default topics
         self.default_topics = self._load_default_topics()
@@ -210,7 +211,7 @@ Need help? Just ask! 😊
         
         try:
             # Fetch and process articles
-            fetcher = NewsFetcher()
+            fetcher = self.fetcher
             matcher = ArticleMatcher(input_text=topics)
             articles = fetcher.fetch_all_articles()
             
