@@ -12,6 +12,8 @@ class NewsFetcher:
         self.hn_api_url = config.HN_API_BASE_URL
         self.hn_stats = None
         self._seen_urls: Set[str] = set()
+        self._hn_lookback_days = 0
+        self._hn_lookback_day_key = None
 
     def reset_session(self) -> None:
         self._seen_urls.clear()
@@ -24,6 +26,15 @@ class NewsFetcher:
             return False
         self._seen_urls.add(normalized)
         return True
+
+    def _get_hn_lookback_days(self) -> int:
+        today = datetime.now().date()
+        if self._hn_lookback_day_key != today:
+            self._hn_lookback_day_key = today
+            self._hn_lookback_days = 3
+        else:
+            self._hn_lookback_days += 3
+        return self._hn_lookback_days
 
     def fetch_news_api_articles(self, source: str) -> List[Dict]:
         """Fetch articles from News API sources"""
@@ -55,15 +66,17 @@ class NewsFetcher:
             print(f"Error fetching from {source}: {str(e)}")
             return []
 
-    def fetch_hacker_news(self, min_comments: int = 10) -> List[Dict]:
-        """Fetch hottest stories from Hacker News (by comment count) from the last 7 days"""
+    def fetch_hacker_news(self, min_comments: int = 10, lookback_days: int | None = None) -> List[Dict]:
+        """Fetch hottest stories from Hacker News (by comment count) from the last N days"""
         try:
             # Use Algolia HN Search API - no API key required!
-            # Search for stories from the last 7 days, sorted by number of comments
+            # Search for stories from the last N days, sorted by number of comments
             algolia_url = "https://hn.algolia.com/api/v1/search"
+
+            effective_lookback_days = lookback_days if lookback_days is not None else self._get_hn_lookback_days()
             
-            # Calculate 7-day cutoff timestamp
-            cutoff_time = datetime.now() - timedelta(days=7)
+            # Calculate cutoff timestamp
+            cutoff_time = datetime.now() - timedelta(days=effective_lookback_days)
             cutoff_timestamp = int(cutoff_time.timestamp())
             
             # Algolia params:
@@ -141,7 +154,7 @@ class NewsFetcher:
                     "hn_discussion_url": f"https://news.ycombinator.com/item?id={story_data.get('objectID')}"
                 })
             
-            stats_msg = f"HN Stats (last 7 days): {total_hits} stories with >={min_comments} comments (earliest: {earliest_time_str})\nCoverage: {len(articles)}/{len(qualifying_stories)} ({100*len(articles)/max(len(qualifying_stories),1):.1f}%)"
+            stats_msg = f"HN Stats (last {effective_lookback_days} days): {total_hits} stories with >={min_comments} comments (earliest: {earliest_time_str})\nCoverage: {len(articles)}/{len(qualifying_stories)} ({100*len(articles)/max(len(qualifying_stories),1):.1f}%)"
             print(stats_msg)
             self.hn_stats = stats_msg
             
