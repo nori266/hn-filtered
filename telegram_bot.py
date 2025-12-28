@@ -3,6 +3,7 @@ import logging
 from pathlib import Path
 from typing import Dict, List
 import io
+from datetime import datetime
 import httpx
 import subprocess
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
@@ -103,6 +104,17 @@ class TelegramHNBot:
         # Escape special characters: _ * [ ] ( ) ~ ` > # + - = | { } . !
         special_chars = r'_*[]()~`>#+-=|{}.!'
         return re.sub(f'([{re.escape(special_chars)}])', r'\\\1', text)
+
+    def _format_article_day(self, date_str: str) -> str:
+        normalized = (date_str or "").strip()
+        if not normalized:
+            return "Unknown"
+        try:
+            normalized = normalized.replace("Z", "+00:00")
+            dt = datetime.fromisoformat(normalized)
+            return dt.date().isoformat()
+        except Exception:
+            return "Unknown"
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Send a message when the command /start is issued."""
@@ -284,6 +296,7 @@ Need help? Just ask! 😊
 **📰 [{article['title']}]({article['url']})**
 
 **Source:** {article['source']}
+**Day:** {self._format_article_day(article.get('date', ''))}
 """
         
         # Show comment count for Hacker News articles
@@ -427,6 +440,7 @@ Need help? Just ask! 😊
                 processing_text = f"""**📰 [{article['title']}]({article['url']})**
 
 **Source:** {article['source']}
+**Day:** {self._format_article_day(article.get('date', ''))}
 """
                 
                 # Show comment count for Hacker News articles
@@ -477,6 +491,7 @@ Need help? Just ask! 😊
             message_text = f"""**📰 [{article['title']}]({article['url']})**
 
 **Source:** {article['source']}
+**Day:** {self._format_article_day(article.get('date', ''))}
 """
             
             # Show comment count for Hacker News articles

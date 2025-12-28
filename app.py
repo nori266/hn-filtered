@@ -5,6 +5,7 @@ import logging
 import threading
 import time
 import re
+from datetime import datetime
 from news_fetcher import NewsFetcher
 from llm_processor import ArticleMatcher, summarize_article
 from tts_utils.piper_client import generate_audio
@@ -55,6 +56,18 @@ def escape_markdown(text: str) -> str:
     """
     special_chars = r'_*[]()~`>#+-=|{}.!'
     return re.sub(f'([{re.escape(special_chars)}])', r'\\\1', text)
+
+def format_article_day(date_str: str) -> str:
+    normalized = (date_str or "").strip()
+    if not normalized:
+        return "Unknown"
+    try:
+        # NewsAPI uses trailing 'Z' for UTC which datetime.fromisoformat doesn't accept
+        normalized = normalized.replace("Z", "+00:00")
+        dt = datetime.fromisoformat(normalized)
+        return dt.date().isoformat()
+    except Exception:
+        return "Unknown"
 
 st.title("Hacker News Filter")
 
@@ -161,6 +174,7 @@ if st.session_state.fetch_clicked:
             with st.container():
                 st.markdown(f"### [{a['title']}]({a['url']})")
                 st.write(f"**Source:** {a['source']}")
+                st.write(f"**Day:** {format_article_day(a.get('date', ''))}")
                 # Show comment count for Hacker News articles
                 if a['source'] == 'hacker-news' and 'hn_comments' in a:
                     comment_count = a['hn_comments']
